@@ -283,6 +283,51 @@ def prev() -> None:
 
 
 # ---------------------------------------------------------------------------
+# top / bottom
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+def top() -> None:
+    """Jump to the last part of the stack."""
+    current = stack.current_entry()
+    if current is None:
+        raise click.ClickException(
+            "Not on a spectrum branch. Use 'spectrum create' first."
+        )
+
+    entries = stack.current_stack()
+    target = entries[-1]
+    if target.index == current.index:
+        raise click.ClickException("Already on the last part.")
+    try:
+        git.checkout(target.branch)
+    except GitError as e:
+        raise click.ClickException(str(e)) from e
+    click.echo(f"Switched to [{target.letter}] {target.branch}")
+
+
+@main.command()
+def bottom() -> None:
+    """Jump to the first part of the stack."""
+    current = stack.current_entry()
+    if current is None:
+        raise click.ClickException(
+            "Not on a spectrum branch. Use 'spectrum create' first."
+        )
+
+    entries = stack.current_stack()
+    target = entries[0]
+    if target.index == current.index:
+        raise click.ClickException("Already on the first part.")
+    try:
+        git.checkout(target.branch)
+    except GitError as e:
+        raise click.ClickException(str(e)) from e
+    click.echo(f"Switched to [{target.letter}] {target.branch}")
+
+
+# ---------------------------------------------------------------------------
 # submit
 # ---------------------------------------------------------------------------
 

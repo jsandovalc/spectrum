@@ -2,13 +2,13 @@
 
 18 potential features for Spectrum, organized by category. Each feature includes a description, motivation, prior art from competing tools, design notes for Spectrum's architecture, and a complexity estimate.
 
-Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`, `submit`, `sync`, `drop`, `adopt`.
+Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`, `top`, `bottom`, `submit`, `sync`, `drop`, `adopt`, `log`.
 
 ---
 
 ## Navigation & Visualization
 
-### 1. `log` / `tree` — DAG/tree view of the stack
+### 1. `log` / `tree` — DAG/tree view of the stack ✅
 
 **What it does.** Prints a visual representation of the stack in the terminal, showing branches, their parent relationships, commit counts, and PR status in a tree or DAG layout. More informative than `status` — it shows the shape of the dependency graph, not just a flat list.
 
@@ -25,7 +25,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ---
 
-### 2. `top` / `bottom` — Jump to first or last part of the stack
+### 2. `top` / `bottom` — Jump to first or last part of the stack ✅
 
 **What it does.** `spectrum top` checks out the last (highest-index) branch in the current stack. `spectrum bottom` checks out the first (index 0) branch. Quick navigation without needing to know the letter.
 

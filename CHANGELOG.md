@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- `spectrum top` / `spectrum bottom`: jump to the last or first part of the stack
 - `spectrum log` (`lg`): graphical stack view with Unicode tree, PR status, draft labels, and diff stats
 - `spectrum create`: start a new stack from a Linear branch name
 - `spectrum add`: add a new part to the current stack

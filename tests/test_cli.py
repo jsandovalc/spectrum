@@ -334,6 +334,94 @@ class TestPrevCommand:
 
 @patch("spectrum.cli.git")
 @patch("spectrum.cli.stack")
+class TestTopCommand:
+    def test_not_on_spectrum_branch(self, mock_stack, mock_git):
+        mock_stack.current_entry.return_value = None
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["top"])
+
+        assert result.exit_code != 0
+        assert "Not on a spectrum branch" in result.output
+
+    def test_moves_to_last_part(self, mock_stack, mock_git):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+            StackEntry(branch="user/msg-1/c", index=2, stack_id="msg-1", merge_base="user/msg-1/b"),
+        ]
+        mock_stack.current_entry.return_value = entries[0]
+        mock_stack.current_stack.return_value = entries
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["top"])
+
+        assert result.exit_code == 0
+        assert "[c]" in result.output
+        mock_git.checkout.assert_called_once_with("user/msg-1/c")
+
+    def test_already_on_top(self, mock_stack, mock_git):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+            StackEntry(branch="user/msg-1/c", index=2, stack_id="msg-1", merge_base="user/msg-1/b"),
+        ]
+        mock_stack.current_entry.return_value = entries[2]
+        mock_stack.current_stack.return_value = entries
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["top"])
+
+        assert result.exit_code != 0
+        assert "Already on the last part." in result.output
+
+
+@patch("spectrum.cli.git")
+@patch("spectrum.cli.stack")
+class TestBottomCommand:
+    def test_not_on_spectrum_branch(self, mock_stack, mock_git):
+        mock_stack.current_entry.return_value = None
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["bottom"])
+
+        assert result.exit_code != 0
+        assert "Not on a spectrum branch" in result.output
+
+    def test_moves_to_first_part(self, mock_stack, mock_git):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+            StackEntry(branch="user/msg-1/c", index=2, stack_id="msg-1", merge_base="user/msg-1/b"),
+        ]
+        mock_stack.current_entry.return_value = entries[2]
+        mock_stack.current_stack.return_value = entries
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["bottom"])
+
+        assert result.exit_code == 0
+        assert "[a]" in result.output
+        mock_git.checkout.assert_called_once_with("user/msg-1/a")
+
+    def test_already_on_bottom(self, mock_stack, mock_git):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+            StackEntry(branch="user/msg-1/c", index=2, stack_id="msg-1", merge_base="user/msg-1/b"),
+        ]
+        mock_stack.current_entry.return_value = entries[0]
+        mock_stack.current_stack.return_value = entries
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["bottom"])
+
+        assert result.exit_code != 0
+        assert "Already on the first part." in result.output
+
+
+@patch("spectrum.cli.git")
+@patch("spectrum.cli.stack")
 class TestAdoptCommand:
     def test_adopts_branches(self, mock_stack, mock_git):
         mock_git.branch_exists.return_value = True
