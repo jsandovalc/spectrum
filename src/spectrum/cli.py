@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import click
 
 from spectrum import git, github, pr_metadata, stack
@@ -482,6 +484,53 @@ def submit(draft: bool, reviewer: str | None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# rebase helper
+# ---------------------------------------------------------------------------
+
+
+def _rebase_entries(
+    entries: list[stack.StackEntry],
+    *,
+    resolve_onto: Callable[[str], str] | None = None,
+    resume_command: str,
+) -> list[str]:
+    """Rebase stack entries in order. Returns list of rebased branch names.
+
+    Partial list if conflict stopped early (conflict message already printed).
+    """
+    rebased: list[str] = []
+    pre_rebase_tip: dict[str, str] = {}
+    for entry in entries:
+        onto = resolve_onto(entry.merge_base) if resolve_onto else entry.merge_base
+        click.echo(f"Rebasing [{entry.letter}] onto {onto}... ", nl=False)
+        try:
+            if entry.merge_base in pre_rebase_tip:
+                old_base = pre_rebase_tip[entry.merge_base]
+            else:
+                old_base = (
+                    git.merge_base_fork_point(onto, entry.branch)
+                    or git.merge_base(entry.branch, onto)
+                )
+            pre_rebase_tip[entry.branch] = git.rev_parse(entry.branch)
+            git.rebase_onto(entry.branch, onto, old_base)
+            click.echo("done")
+            rebased.append(entry.branch)
+        except RebaseConflictError:
+            click.echo("CONFLICT")
+            click.echo(
+                f"\nConflict rebasing [{entry.letter}] onto {onto}. "
+                "Resolve conflicts, then:\n"
+                "  git add <files>\n"
+                "  git rebase --continue\n"
+                f"  {resume_command}"
+            )
+            return rebased
+        except GitError as e:
+            raise click.ClickException(str(e)) from e
+    return rebased
+
+
+# ---------------------------------------------------------------------------
 # sync
 # ---------------------------------------------------------------------------
 
@@ -552,35 +601,13 @@ def sync(no_push: bool) -> None:
     # Rebase scope: from current position onward
     to_rebase = [e for e in entries if e.index >= current.index]
 
-    branches_to_push: list[str] = []
-    pre_rebase_tip: dict[str, str] = {}
-    for entry in to_rebase:
-        onto = "origin/master" if entry.merge_base == "master" else entry.merge_base
-        click.echo(f"Rebasing [{entry.letter}] onto {onto}... ", nl=False)
-        try:
-            if entry.merge_base in pre_rebase_tip:
-                old_base = pre_rebase_tip[entry.merge_base]
-            else:
-                old_base = (
-                    git.merge_base_fork_point(onto, entry.branch)
-                    or git.merge_base(entry.branch, onto)
-                )
-            pre_rebase_tip[entry.branch] = git.rev_parse(entry.branch)
-            git.rebase_onto(entry.branch, onto, old_base)
-            click.echo("done")
-            branches_to_push.append(entry.branch)
-        except RebaseConflictError:
-            click.echo("CONFLICT")
-            click.echo(
-                f"\nConflict rebasing [{entry.letter}] onto {onto}. "
-                "Resolve conflicts, then:\n"
-                "  git add <files>\n"
-                "  git rebase --continue\n"
-                "  spectrum sync"
-            )
-            return
-        except GitError as e:
-            raise click.ClickException(str(e)) from e
+    branches_to_push = _rebase_entries(
+        to_rebase,
+        resolve_onto=lambda mb: "origin/master" if mb == "master" else mb,
+        resume_command="spectrum sync",
+    )
+    if len(branches_to_push) < len(to_rebase):
+        return
 
     # Return to original branch
     try:
@@ -811,3 +838,32 @@ def adopt(branches: tuple[str, ...]) -> None:
         click.echo(f"  [{letter}] {branch} <- {merge_base}")
 
     click.echo(f"\nAdopted {len(branches)} branches into stack {stack_id}")
+
+
+# ---------------------------------------------------------------------------
+# restack
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+def restack() -> None:
+    """Rebase all descendants of the current branch."""
+    current = stack.current_entry()
+    if current is None:
+        raise click.ClickException(
+            "Not on a spectrum branch. Use 'spectrum create' first."
+        )
+
+    entries = stack.get_stack(current.stack_id)
+    original_branch = current.branch
+    to_rebase = [e for e in entries if e.index > current.index]
+    if not to_rebase:
+        click.echo("Nothing to restack.")
+        return
+
+    _rebase_entries(to_rebase, resume_command="spectrum restack")
+
+    try:
+        git.checkout(original_branch)
+    except GitError:
+        pass

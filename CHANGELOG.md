@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- `spectrum restack`: rebase all descendants of the current branch (local only — no fetch, no push). Use after amending a mid-stack branch to cascade changes forward.
+
+### Changed
+- Extracted shared rebase loop into `_rebase_entries` helper, used by both `sync` and `restack`
+
+### Previous
 - `spectrum top` / `spectrum bottom`: jump to the last or first part of the stack
 - `spectrum log` (`lg`): graphical stack view with Unicode tree, PR status, draft labels, and diff stats
 - `spectrum create`: start a new stack from a Linear branch name

@@ -106,16 +106,16 @@ $ sp next          # move to next part
 $ sp switch a      # or jump directly by letter
 ```
 
-After amending an earlier part, `sync` cascades the rebase forward:
+After amending an earlier part, use `restack` to cascade the rebase forward locally:
 
 ```
 $ sp prev
 # ... fix something, commit ...
-$ sp sync
+$ sp restack
 Rebasing [b] onto [a]... done
-
-Pushed.
 ```
+
+`restack` is purely local — no fetch, no push. Use `sync` when you also want to fetch `origin/master`, detect merged PRs, and push.
 
 ### 6. Drop a part
 
@@ -136,10 +136,62 @@ Dropped [b] user/msg-3391-preserve-aggregator-response-kind/b
 | `sp switch <letter>` (`sw`) | Switch to a stack part (a, b, c, ...) |
 | `sp next` | Move to the next part in the stack |
 | `sp prev` | Move to the previous part in the stack |
+| `sp top` | Jump to the last part of the stack |
+| `sp bottom` | Jump to the first part of the stack |
 | `sp submit [--draft] [-r reviewer]` | Push and create/update PRs for all parts |
 | `sp sync [--no-push]` | Fetch, detect merges, rebase from current position |
+| `sp restack` | Rebase descendants of the current branch (local only) |
 | `sp drop [letter]` | Remove a part from the stack |
 | `sp adopt <branch> [...]` | Import existing branches into a stack |
+
+## Common flows
+
+### Fix an earlier part (address PR feedback)
+
+```
+sp switch a            # go to the part that needs changes
+# ... edit, commit ...
+sp restack             # cascade rebase to [b], [c], ...
+sp submit              # push and update PRs
+```
+
+### Start of day / before resuming work
+
+```
+sp sync                # fetch master, detect merges, rebase, push
+```
+
+### First PR merged, continue with the rest
+
+```
+sp sync                # detects [a] was merged, retargets [b] to master, rebases, pushes
+```
+
+### Add a part mid-stack
+
+```
+sp switch b            # go to where you want to insert after
+sp add                 # creates [c] branching off [b]
+# ... commit work on [c] ...
+sp submit --draft
+```
+
+### Resolve a rebase conflict
+
+```
+sp restack             # or sp sync — stops at the conflict
+# ... fix conflicts ...
+git add <files>
+git rebase --continue
+sp restack             # resume from where it stopped
+```
+
+### Adopt existing branches into a stack
+
+```
+sp adopt user/msg-1-foo/a user/msg-1-foo/b user/msg-1-foo/c
+sp submit --draft
+```
 
 ## Branch naming
 

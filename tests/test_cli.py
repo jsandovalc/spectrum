@@ -1056,6 +1056,77 @@ class TestLogCommand:
         assert "Not on a spectrum branch" in result.output
 
 
+@patch("spectrum.cli.git", autospec=True)
+@patch("spectrum.cli.stack", autospec=True)
+class TestRestackCommand:
+    def test_not_on_spectrum_branch(self, mock_stack, mock_git):
+        mock_stack.current_entry.return_value = None
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["restack"])
+
+        assert result.exit_code != 0
+        assert "Not on a spectrum branch" in result.output
+
+    def test_nothing_to_restack_on_last_entry(self, mock_stack, mock_git):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+        ]
+        mock_stack.current_entry.return_value = entries[1]
+        mock_stack.get_stack.return_value = entries
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["restack"])
+
+        assert result.exit_code == 0
+        assert "Nothing to restack" in result.output
+        mock_git.rebase_onto.assert_not_called()
+
+    def test_rebases_only_entries_after_current(self, mock_stack, mock_git):
+        """On [a] of a-b-c, restack rebases [b] and [c] but not [a]."""
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+            StackEntry(branch="user/msg-1/c", index=2, stack_id="msg-1", merge_base="user/msg-1/b"),
+        ]
+        mock_stack.current_entry.return_value = entries[0]
+        mock_stack.get_stack.return_value = entries
+        mock_git.current_branch.return_value = "user/msg-1/a"
+        mock_git.merge_base.return_value = "abc123"
+        mock_git.merge_base_fork_point.return_value = None
+        mock_git.rev_parse.side_effect = lambda ref: f"tip-{ref.split('/')[-1]}"
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["restack"])
+
+        assert result.exit_code == 0
+        # Should rebase [b] and [c], but NOT [a]
+        rebased_branches = [c.args[0] for c in mock_git.rebase_onto.call_args_list]
+        assert "user/msg-1/b" in rebased_branches
+        assert "user/msg-1/c" in rebased_branches
+        assert "user/msg-1/a" not in rebased_branches
+        assert mock_git.rebase_onto.call_count == 2
+
+    def test_returns_to_original_branch(self, mock_stack, mock_git):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+        ]
+        mock_stack.current_entry.return_value = entries[0]
+        mock_stack.get_stack.return_value = entries
+        mock_git.current_branch.return_value = "user/msg-1/a"
+        mock_git.merge_base.return_value = "abc123"
+        mock_git.merge_base_fork_point.return_value = None
+        mock_git.rev_parse.return_value = "tip-b"
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["restack"])
+
+        assert result.exit_code == 0
+        mock_git.checkout.assert_called_with("user/msg-1/a")
+
+
 @patch("spectrum.cli.github", autospec=True)
 @patch("spectrum.cli.git", autospec=True)
 class TestBuildStackTableEntries:
