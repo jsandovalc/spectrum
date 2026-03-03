@@ -178,3 +178,46 @@ def log_subjects(base: str, head: str) -> list[str]:
 def delete_branch(branch: str, *, force: bool = False) -> None:
     flag = "-D" if force else "-d"
     _run(["branch", flag, branch])
+
+
+def reset_soft(ref: str) -> None:
+    """Reset current branch to ref, keeping changes staged."""
+    _run(["reset", "--soft", ref])
+
+
+def commit(message: str) -> None:
+    """Create a commit with the given message."""
+    _run(["commit", "-m", message])
+
+
+def rename_branch(old: str, new: str) -> None:
+    """Rename a branch. Git auto-migrates branch.<name>.* config."""
+    _run(["branch", "-m", old, new])
+
+
+def delete_remote_branch(branch: str, remote: str = "origin") -> None:
+    """Delete a branch on the remote."""
+    _run(["push", remote, "--delete", branch])
+
+
+def merge_ff_only(branch: str) -> None:
+    """Fast-forward merge a branch into the current branch."""
+    _run(["merge", "--ff-only", branch])
+
+
+def git_dir() -> str:
+    """Return the path to the .git directory."""
+    result = _run(["rev-parse", "--git-dir"])
+    return result.stdout.strip()
+
+
+def rebase_continue() -> None:
+    """Continue an in-progress rebase."""
+    result = _run(["rebase", "--continue"], check=False)
+    if result.returncode != 0:
+        raise RebaseConflictError("unknown", "unknown")
+
+
+def rebase_abort() -> None:
+    """Abort an in-progress rebase."""
+    _run(["rebase", "--abort"])

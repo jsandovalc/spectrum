@@ -143,6 +143,16 @@ Dropped [b] user/msg-3391-preserve-aggregator-response-kind/b
 | `sp restack` | Rebase descendants of the current branch (local only) |
 | `sp drop [letter]` | Remove a part from the stack |
 | `sp adopt <branch> [...]` | Import existing branches into a stack |
+| `sp pr` (`o`) | Open current branch's PR in the browser |
+| `sp title <title>` | Set the PR title for the current branch |
+| `sp land [--method squash\|merge\|rebase]` | Merge the bottom PR and update the stack |
+| `sp squash [-m message]` | Squash all commits in the current branch into one |
+| `sp fold` | Merge the current branch into its parent |
+| `sp move --onto <letter>` | Move the current branch to be a child of another branch |
+| `sp rename <new-name>` | Rename the current branch (local + remote) |
+| `sp wip [on\|off]` | Toggle WIP status (WIP branches are skipped during submit) |
+| `sp continue` | Resume a rebase after resolving conflicts |
+| `sp abort` | Abort a rebase in progress |
 
 ## Common flows
 
@@ -182,8 +192,13 @@ sp submit --draft
 sp restack             # or sp sync — stops at the conflict
 # ... fix conflicts ...
 git add <files>
-git rebase --continue
-sp restack             # resume from where it stopped
+sp continue            # resume from where it stopped
+```
+
+Or abort the operation entirely:
+
+```
+sp abort               # cancel the rebase and return to your branch
 ```
 
 ### Dependent stacks (stack on top of another stack)
@@ -202,6 +217,48 @@ When the dependency stack's PR merges, `sp sync` detects it and retargets your P
 ```
 sp adopt user/msg-1-foo/a user/msg-1-foo/b user/msg-1-foo/c
 sp submit --draft
+```
+
+### Land the bottom PR
+
+```
+sp land                # merges bottom PR via squash, retargets stack, rebases
+```
+
+Use `--method merge` or `--method rebase` for alternative merge strategies.
+
+### Squash commits before landing
+
+```
+sp squash              # squashes all commits into one, using first commit's subject
+sp squash -m "Clean implementation"   # custom message
+```
+
+### Fold a branch into its parent
+
+```
+sp switch b
+sp fold                # merges [b] into [a], removes [b] from stack
+```
+
+### Move a branch to a different parent
+
+```
+sp move --onto a       # move current branch to be a child of [a]
+```
+
+### Mark a branch as WIP
+
+```
+sp wip                 # toggle WIP on current branch
+sp wip on              # or explicitly set
+sp submit              # WIP branches are skipped
+```
+
+### Rename a branch
+
+```
+sp rename user/msg-3391-better-name/a   # renames local + remote
 ```
 
 ## Branch naming
@@ -231,13 +288,17 @@ Stack state lives in git branch config (local `.git/config`):
 - `spectrum-stack` — stack identifier (ticket ID)
 - `spectrum-index` — position in stack (0-indexed)
 - `spectrum-pr` — PR number (set after creation)
+- `spectrum-wip` — `true` if branch is marked as WIP (skipped during submit)
+- `spectrum-title` — custom PR title (used by submit and title commands)
+
+Operation state (for `continue`/`abort`) is saved to `.git/spectrum-state.json` during rebase conflicts.
 
 No extra files or directories. State survives rebases.
 
 ## Safety
 
 - All pushes use `--force-with-lease`
-- Rebase conflicts abort cleanly with recovery instructions
+- Rebase conflicts save state and can be resumed with `spectrum continue` or cancelled with `spectrum abort`
 - PR body edits only touch the `<!-- SPECTRUM:START -->` / `<!-- SPECTRUM:END -->` region
 
 ## Tests

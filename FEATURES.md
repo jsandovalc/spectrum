@@ -2,7 +2,7 @@
 
 18 potential features for Spectrum, organized by category. Each feature includes a description, motivation, prior art from competing tools, design notes for Spectrum's architecture, and a complexity estimate.
 
-Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`, `top`, `bottom`, `submit`, `sync`, `drop`, `adopt`, `log`.
+Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`, `top`, `bottom`, `submit`, `sync`, `drop`, `adopt`, `log`, `pr`, `title`, `land`, `rename`, `fold`, `move`, `squash`, `wip`, `continue`, `abort`, `completion`.
 
 ---
 
@@ -107,7 +107,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ---
 
-### 6. `fold` — Merge a branch into its parent
+### 6. `fold` — Merge a branch into its parent ✅
 
 **What it does.** Combines the current branch's commits into its parent branch, then removes the current branch from the stack. The inverse of `split`. Children of the folded branch are retargeted to the parent.
 
@@ -124,7 +124,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ---
 
-### 7. `move` / `reparent` — Change a branch's parent
+### 7. `move` / `reparent` — Change a branch's parent ✅
 
 **What it does.** Changes which branch the current part is based on. For example, moving [c] from being based on [b] to being based on [a] instead. Rebases [c]'s commits onto the new parent.
 
@@ -141,7 +141,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ---
 
-### 8. `squash` — Squash all commits within a branch into one
+### 8. `squash` — Squash all commits within a branch into one ✅
 
 **What it does.** Replaces all commits in the current branch (relative to its merge base) with a single commit. The commit message can be edited or auto-generated from the branch's PR title.
 
@@ -160,7 +160,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ## PR & Merge Management
 
-### 9. `land` / `merge` — Merge bottom PR(s) from CLI + auto-sync
+### 9. `land` / `merge` — Merge bottom PR(s) from CLI + auto-sync ✅
 
 **What it does.** Merges the bottom-most (or a specified) PR in the stack via the GitHub API, then automatically runs the equivalent of `sync` to retarget remaining PRs and rebase the stack.
 
@@ -178,7 +178,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ---
 
-### 10. Open PR in browser — `spectrum pr`
+### 10. Open PR in browser — `spectrum pr` ✅
 
 **What it does.** Opens the current branch's PR in the default web browser. If no PR exists yet, shows an error suggesting `spectrum submit` first.
 
@@ -195,7 +195,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ---
 
-### 11. PR title editing — Edit PR titles from CLI
+### 11. PR title editing — Edit PR titles from CLI ✅
 
 **What it does.** Updates the PR title for the current branch (or a specified part) without leaving the terminal. Also updates the `spectrum-title` git config key so future `submit` calls use the new title.
 
@@ -212,7 +212,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ---
 
-### 12. WIP/skip support — Mark branches to skip during PR creation
+### 12. WIP/skip support — Mark branches to skip during PR creation ✅
 
 **What it does.** Marks a branch as "work in progress" so that `submit` skips it when creating PRs. The branch still exists in the stack and can be developed on, but PRs are only created for non-WIP parts.
 
@@ -248,7 +248,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ---
 
-### 14. `continue` / `abort` — Resume or cancel after rebase conflicts
+### 14. `continue` / `abort` — Resume or cancel after rebase conflicts ✅
 
 **What it does.** After a `sync` or `restack` stops due to a rebase conflict, `spectrum continue` resumes the operation from where it left off (after the user resolves conflicts). `spectrum abort` cancels the in-progress operation and restores the previous state.
 
@@ -284,7 +284,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ---
 
-### 16. `rename` — Rename current part's branch
+### 16. `rename` — Rename current part's branch ✅
 
 **What it does.** Renames the current branch (both locally and on the remote) while preserving all stack state — config keys, merge-base pointers in child entries, and PR associations.
 
@@ -303,7 +303,7 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ## DX & Ergonomics
 
-### 17. Shell completions — Tab completion for commands and arguments
+### 17. Shell completions — Tab completion for commands and arguments ✅
 
 **What it does.** Provides tab-completion for spectrum commands, subcommands, and arguments (like part letters in `switch`, branch names in `adopt`) in bash, zsh, and fish shells.
 

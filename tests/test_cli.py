@@ -522,7 +522,7 @@ class TestSyncCommand:
         assert result.exit_code != 0
         assert "Not on a spectrum branch" in result.output
 
-    def test_conflict_message_says_spectrum_sync(self, mock_stack, mock_git, mock_github):
+    def test_conflict_message_says_spectrum_continue(self, mock_stack, mock_git, mock_github):
         from spectrum.git import RebaseConflictError
 
         entries = [
@@ -538,7 +538,8 @@ class TestSyncCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["sync"])
 
-        assert "spectrum sync" in result.output
+        assert "spectrum continue" in result.output
+        assert "spectrum abort" in result.output
 
     def test_uses_pre_rebase_tip_for_second_branch(self, mock_stack, mock_git, mock_github):
         """When rebasing a→b, rebase_onto for b uses a's pre-rebase tip, not merge_base."""

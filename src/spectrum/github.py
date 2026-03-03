@@ -92,6 +92,21 @@ def pr_edit_base(pr_number: int, base: str) -> None:
         raise GhError("'gh' CLI not found. Install it: https://cli.github.com") from None
 
 
+def pr_view_web(branch: str) -> None:
+    """Open the PR for a branch in the default web browser."""
+    _run_gh(["pr", "view", branch, "--web"])
+
+
+def pr_edit_title(pr_number: int, title: str) -> None:
+    """Update a PR's title."""
+    _run_gh(["pr", "edit", str(pr_number), "--title", title])
+
+
+def pr_merge(pr_number: int, *, method: str = "squash") -> None:
+    """Merge a PR using the specified method."""
+    _run_gh(["pr", "merge", str(pr_number), f"--{method}", "--delete-branch"])
+
+
 def pr_view(pr_number: int) -> dict:
     """Get PR details as a dict."""
     result = _run_gh([

@@ -10,20 +10,32 @@ Spectrum is a Python CLI tool that manages stacked PRs on GitHub. It orchestrate
 spectrum/
 ├── pyproject.toml
 ├── src/spectrum/
-│   ├── cli.py          # Click command group (AliasGroup), all 9 commands
+│   ├── cli.py          # Click command group (AliasGroup), all 20 commands
 │   ├── git.py          # Git subprocess wrapper (branch, config, rebase, push)
-│   ├── github.py       # gh CLI wrapper (PR create/edit/view)
+│   ├── github.py       # gh CLI wrapper (PR create/edit/view/merge)
+│   ├── opstate.py      # Operation state persistence for continue/abort
 │   ├── pr_metadata.py  # Sentinel-based PR body metadata management
 │   └── stack.py        # Stack state model, git config read/write, reconstruction
 └── tests/
     ├── test_cli.py
+    ├── test_completion_command.py
+    ├── test_continue_abort.py
+    ├── test_fold_command.py
+    ├── test_land_command.py
+    ├── test_move_command.py
+    ├── test_opstate.py
+    ├── test_pr_command.py
     ├── test_pr_metadata.py
-    └── test_stack.py
+    ├── test_rename_command.py
+    ├── test_squash_command.py
+    ├── test_stack.py
+    ├── test_title_command.py
+    └── test_wip_command.py
 ```
 
 ## Key concepts
 
-**Stack state** is stored in git branch config keys (`spectrum-stack`, `spectrum-index`, `spectrum-pr`, `gh-merge-base`). No files on disk.
+**Stack state** is stored in git branch config keys (`spectrum-stack`, `spectrum-index`, `spectrum-pr`, `gh-merge-base`, `spectrum-wip`, `spectrum-title`). Operation state for `continue`/`abort` is saved to `.git/spectrum-state.json`.
 
 **Branch naming**: Linear branch names get `/a`, `/b`, `/c` appended. The ticket ID (e.g. `msg-3391`) is extracted from the branch name via regex and used as the stack identifier.
 

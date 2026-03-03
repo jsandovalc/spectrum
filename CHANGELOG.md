@@ -3,13 +3,33 @@
 ## [Unreleased]
 
 ### Added
-- `spectrum create --on <branch>`: start a stack from another branch instead of master, enabling dependent stacks
-- `spectrum sync` cross-stack retargeting: when a dependency stack's PR merges, sync detects it and retargets PRs to master
-- `spectrum restack`: rebase all descendants of the current branch (local only — no fetch, no push). Use after amending a mid-stack branch to cascade changes forward.
+- `spectrum pr` (`o`): open current branch's PR in the browser via `gh pr view --web`
+- `spectrum title <title>`: set PR title from the CLI; updates GitHub immediately if a PR exists
+- `spectrum land [--method]`: merge the bottom PR (squash/merge/rebase), retarget the stack, and rebase remaining entries
+- `spectrum squash [-m message]`: squash all commits in the current branch into one; auto-restacks descendants
+- `spectrum fold`: merge the current branch into its parent and remove it from the stack
+- `spectrum move --onto <letter>`: reparent the current branch under a different stack entry
+- `spectrum rename <new-name>`: rename the current branch locally and on the remote, updating child references
+- `spectrum wip [on|off]`: toggle WIP status; WIP branches are skipped during `submit`
+- `spectrum continue`: resume a rebase after resolving conflicts (replaces manual `git rebase --continue` + re-run)
+- `spectrum abort`: cancel an in-progress rebase and return to the original branch
+- `spectrum completion bash|zsh|fish`: print shell completion activation script
+- Operation state persistence (`opstate.py`): on rebase conflicts, state is saved to `.git/spectrum-state.json` for `continue`/`abort`
+- `wip` field on `StackEntry`, stored in `spectrum-wip` git config key
 
 ### Changed
-- Extracted shared retarget-to-master logic into `_retarget_to_master` helper, used by both same-stack and cross-stack merge handling in `sync`
-- Extracted shared rebase loop into `_rebase_entries` helper, used by both `sync` and `restack`
+- `_rebase_entries` now accepts `original_branch` parameter instead of calling `git.current_branch()` during conflict (which fails in detached HEAD state)
+- `write_entry` now persists the `wip` field to git config
+- `remove_entry` now cleans up `spectrum-wip` config key
+- `submit` skips WIP entries (no push, no PR creation)
+- Conflict messages now instruct users to run `spectrum continue` / `spectrum abort` instead of manual git commands
+
+### Previous
+- `spectrum create --on <branch>`: start a stack from another branch instead of master, enabling dependent stacks
+- `spectrum sync` cross-stack retargeting: when a dependency stack's PR merges, sync detects it and retargets PRs to master
+- `spectrum restack`: rebase all descendants of the current branch (local only — no fetch, no push)
+- Extracted shared retarget-to-master logic into `_retarget_to_master` helper
+- Extracted shared rebase loop into `_rebase_entries` helper
 
 ### Previous
 - `spectrum top` / `spectrum bottom`: jump to the last or first part of the stack

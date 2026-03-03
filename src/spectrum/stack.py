@@ -15,6 +15,7 @@ class StackEntry:
     stack_id: str
     merge_base: str
     pr_number: int | None = None
+    wip: bool = False
 
     @property
     def letter(self) -> str:
@@ -82,12 +83,14 @@ def read_entry(branch: str) -> StackEntry | None:
         return None
     merge_base = git.get_branch_config(branch, "gh-merge-base") or "master"
     pr_str = git.get_branch_config(branch, "spectrum-pr")
+    wip_str = git.get_branch_config(branch, "spectrum-wip")
     return StackEntry(
         branch=branch,
         index=int(index_str),
         stack_id=stack_id,
         merge_base=merge_base,
         pr_number=int(pr_str) if pr_str else None,
+        wip=wip_str == "true",
     )
 
 
@@ -98,6 +101,10 @@ def write_entry(entry: StackEntry) -> None:
     git.set_branch_config(entry.branch, "gh-merge-base", entry.merge_base)
     if entry.pr_number is not None:
         git.set_branch_config(entry.branch, "spectrum-pr", str(entry.pr_number))
+    if entry.wip:
+        git.set_branch_config(entry.branch, "spectrum-wip", "true")
+    else:
+        git.unset_branch_config(entry.branch, "spectrum-wip")
 
 
 def remove_entry(branch: str) -> None:
@@ -105,6 +112,7 @@ def remove_entry(branch: str) -> None:
     git.unset_branch_config(branch, "spectrum-stack")
     git.unset_branch_config(branch, "spectrum-index")
     git.unset_branch_config(branch, "spectrum-pr")
+    git.unset_branch_config(branch, "spectrum-wip")
 
 
 def get_stack(stack_id: str) -> list[StackEntry]:
