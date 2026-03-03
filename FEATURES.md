@@ -42,9 +42,21 @@ Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`
 
 ---
 
+### 2.5. Dependent stacks — Build a stack on top of another stack's branch ✅
+
+**What it does.** `spectrum create <branch> --on <other-branch>` starts a new stack from an arbitrary branch instead of `origin/master`. When the dependency branch's PR merges, `spectrum sync` detects it and retargets the dependent stack's PRs to master automatically.
+
+**Why it's useful.** Related tickets often form a dependency chain — stack 2 builds on stack 1's last branch. Without this, you'd manually manage cross-stack base branches and retarget PRs when dependencies land.
+
+**Spectrum design notes.** The `--on` flag sets both the git start point and `merge_base` in the stack entry. A new `_is_cross_stack_base_merged()` helper checks whether a merge base belongs to another stack whose PR has been merged (via `stack.read_entry` then `github.pr_view`, with fallback to `github.pr_view_by_branch`). The retargeting logic in `sync` reuses the shared `_retarget_to_master()` helper. No auto-cascade restack across stacks — the user runs `restack` manually on each dependent stack.
+
+**Complexity:** Medium
+
+---
+
 ## Stack Manipulation
 
-### 3. `restack` — Rebase children after local edits mid-stack
+### 3. `restack` — Rebase children after local edits mid-stack ✅
 
 **What it does.** After amending or adding commits to a branch in the middle of the stack, `restack` rebases all descendant branches so they incorporate the changes. Unlike `sync` (which fetches from remote and handles merges), `restack` is purely local — it fixes up the stack after local edits.
 

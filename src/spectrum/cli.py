@@ -63,7 +63,8 @@ def main() -> None:
 
 @main.command()
 @click.argument("branch_name")
-def create(branch_name: str) -> None:
+@click.option("--on", "on_branch", default=None, help="Start stack from this branch instead of master")
+def create(branch_name: str, on_branch: str | None) -> None:
     """Start a new stack from a Linear branch name.
 
     BRANCH_NAME is the branch name copied from Linear, e.g.
@@ -80,14 +81,24 @@ def create(branch_name: str) -> None:
     if git.branch_exists(first_branch):
         raise click.ClickException(f"Branch {first_branch} already exists")
 
+    if on_branch is not None and not git.branch_exists(on_branch):
+        raise click.ClickException(f"Branch {on_branch} does not exist")
+
     click.echo("Fetching latest master...")
     try:
         git.fetch("origin", "master")
     except GitError as e:
         raise click.ClickException(str(e)) from e
 
+    if on_branch is not None:
+        start_point = on_branch
+        merge_base = on_branch
+    else:
+        start_point = "origin/master"
+        merge_base = "master"
+
     try:
-        git.create_branch(first_branch, "origin/master")
+        git.create_branch(first_branch, start_point)
     except GitError as e:
         raise click.ClickException(str(e)) from e
 
@@ -95,12 +106,13 @@ def create(branch_name: str) -> None:
         branch=first_branch,
         index=0,
         stack_id=stack_id,
-        merge_base="master",
+        merge_base=merge_base,
     )
     stack.write_entry(entry)
 
+    based_on = f" (based on {on_branch})" if on_branch else ""
     click.echo(f"Created stack {stack_id} on branch:")
-    click.echo(f"  [a] {first_branch}")
+    click.echo(f"  [a] {first_branch}{based_on}")
 
 
 # ---------------------------------------------------------------------------
@@ -530,9 +542,59 @@ def _rebase_entries(
     return rebased
 
 
+def _retarget_to_master(entry: stack.StackEntry, reason: str | None = None) -> None:
+    """Retarget an entry's merge base to master and update PR if it exists."""
+    entry.merge_base = "master"
+    git.set_branch_config(entry.branch, "gh-merge-base", "master")
+    if entry.pr_number:
+        try:
+            github.pr_edit_base(entry.pr_number, "master")
+        except GhError:
+            pass
+    suffix = f" ({reason})" if reason else ""
+    click.echo(f"  [{entry.letter}] retargeted to master{suffix}")
+
+
 # ---------------------------------------------------------------------------
 # sync
 # ---------------------------------------------------------------------------
+
+
+def _is_cross_stack_base_merged(
+    merge_base: str,
+    entries: list[stack.StackEntry],
+) -> bool:
+    """Check if merge_base is a cross-stack branch whose PR has been merged.
+
+    Returns False for "master" or branches within the current stack.
+    Falls back to pr_view_by_branch when local config is missing.
+    Returns False if all lookups fail (fail-safe: don't retarget).
+    """
+    if merge_base == "master":
+        return False
+
+    # If the merge_base is a branch in the current stack, it's not cross-stack
+    if any(e.branch == merge_base for e in entries):
+        return False
+
+    # Try looking up the PR via stack config on the merge_base branch
+    base_entry = stack.read_entry(merge_base)
+    if base_entry and base_entry.pr_number:
+        try:
+            pr_data = github.pr_view(base_entry.pr_number)
+            return pr_data.get("state") == "MERGED"
+        except GhError:
+            pass
+
+    # Fallback: look up PR by branch name (handles deleted local branches)
+    try:
+        pr_data = github.pr_view_by_branch(merge_base)
+        if pr_data is not None:
+            return pr_data.get("state") == "MERGED"
+    except GhError:
+        pass
+
+    return False
 
 
 @main.command()
@@ -577,14 +639,7 @@ def sync(no_push: bool) -> None:
                 (e for e in entries if e.branch == entry.merge_base), None
             )
             if parent_entry and parent_entry.index in merged_indices:
-                entry.merge_base = "master"
-                git.set_branch_config(entry.branch, "gh-merge-base", "master")
-                if entry.pr_number:
-                    try:
-                        github.pr_edit_base(entry.pr_number, "master")
-                    except GhError:
-                        pass
-                click.echo(f"  [{entry.letter}] retargeted to master")
+                _retarget_to_master(entry)
 
         # Clean up merged entries
         for entry in entries:
@@ -597,6 +652,12 @@ def sync(no_push: bool) -> None:
     if not entries:
         click.echo("All parts merged! Stack is empty.")
         return
+
+    # Check for cross-stack dependencies that have been merged
+    for entry in entries:
+        old_base = entry.merge_base
+        if _is_cross_stack_base_merged(old_base, entries):
+            _retarget_to_master(entry, reason=f"dependency {old_base} merged")
 
     # Rebase scope: from current position onward
     to_rebase = [e for e in entries if e.index >= current.index]

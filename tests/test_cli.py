@@ -2,7 +2,7 @@ from unittest.mock import patch, call
 
 from click.testing import CliRunner
 
-from spectrum.cli import main, _get_title, _build_stack_table_entries, AliasGroup
+from spectrum.cli import main, _get_title, _build_stack_table_entries, _is_cross_stack_base_merged, AliasGroup
 from spectrum.git import GitError
 from spectrum.github import GhError
 from spectrum.stack import StackEntry
@@ -1148,3 +1148,195 @@ class TestBuildStackTableEntries:
         result = _build_stack_table_entries([entry])
 
         assert result[0]["title"] == "MSG-1 [a]: My PR title"
+
+
+@patch("spectrum.cli.git")
+@patch("spectrum.cli.stack")
+class TestCreateOnBranch:
+    def test_on_creates_branch_from_specified_branch(self, mock_stack, mock_git):
+        mock_stack.extract_stack_id.return_value = "msg-200"
+        mock_git.branch_exists.side_effect = lambda b: b == "user/msg-100-foo/c"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["create", "user/msg-200-bar", "--on", "user/msg-100-foo/c"]
+        )
+
+        assert result.exit_code == 0
+        mock_git.create_branch.assert_called_once_with(
+            "user/msg-200-bar/a", "user/msg-100-foo/c"
+        )
+        ctor_kwargs = mock_stack.StackEntry.call_args.kwargs
+        assert ctor_kwargs["merge_base"] == "user/msg-100-foo/c"
+        assert "based on user/msg-100-foo/c" in result.output
+
+    def test_on_with_nonexistent_branch_fails(self, mock_stack, mock_git):
+        mock_stack.extract_stack_id.return_value = "msg-200"
+        mock_git.branch_exists.return_value = False
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["create", "user/msg-200-bar", "--on", "nonexistent"]
+        )
+
+        assert result.exit_code != 0
+        assert "does not exist" in result.output
+
+    def test_on_still_fetches_master(self, mock_stack, mock_git):
+        mock_stack.extract_stack_id.return_value = "msg-200"
+        mock_git.branch_exists.side_effect = lambda b: b == "user/msg-100-foo/c"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["create", "user/msg-200-bar", "--on", "user/msg-100-foo/c"]
+        )
+
+        assert result.exit_code == 0
+        mock_git.fetch.assert_called_once_with("origin", "master")
+
+    def test_without_on_uses_origin_master(self, mock_stack, mock_git):
+        mock_stack.extract_stack_id.return_value = "msg-200"
+        mock_git.branch_exists.return_value = False
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["create", "user/msg-200-bar"])
+
+        assert result.exit_code == 0
+        mock_git.create_branch.assert_called_once_with(
+            "user/msg-200-bar/a", "origin/master"
+        )
+        ctor_kwargs = mock_stack.StackEntry.call_args.kwargs
+        assert ctor_kwargs["merge_base"] == "master"
+        assert "based on" not in result.output
+
+
+@patch("spectrum.cli.github", autospec=True)
+@patch("spectrum.cli.stack", autospec=True)
+class TestIsCrossStackBaseMerged:
+    def test_returns_false_for_master(self, mock_stack, mock_github):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+        ]
+        assert _is_cross_stack_base_merged("master", entries) is False
+
+    def test_returns_false_for_same_stack_branch(self, mock_stack, mock_github):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+        ]
+        assert _is_cross_stack_base_merged("user/msg-1/a", entries) is False
+
+    def test_returns_true_when_pr_merged_via_read_entry(self, mock_stack, mock_github):
+        entries = [
+            StackEntry(branch="user/msg-2/a", index=0, stack_id="msg-2", merge_base="user/msg-1/c"),
+        ]
+        mock_stack.read_entry.return_value = StackEntry(
+            branch="user/msg-1/c", index=2, stack_id="msg-1", merge_base="user/msg-1/b", pr_number=42,
+        )
+        mock_github.pr_view.return_value = {"state": "MERGED"}
+
+        assert _is_cross_stack_base_merged("user/msg-1/c", entries) is True
+        mock_stack.read_entry.assert_called_once_with("user/msg-1/c")
+        mock_github.pr_view.assert_called_once_with(42)
+
+    def test_returns_false_when_pr_open_via_read_entry(self, mock_stack, mock_github):
+        entries = [
+            StackEntry(branch="user/msg-2/a", index=0, stack_id="msg-2", merge_base="user/msg-1/c"),
+        ]
+        mock_stack.read_entry.return_value = StackEntry(
+            branch="user/msg-1/c", index=2, stack_id="msg-1", merge_base="user/msg-1/b", pr_number=42,
+        )
+        mock_github.pr_view.return_value = {"state": "OPEN"}
+
+        assert _is_cross_stack_base_merged("user/msg-1/c", entries) is False
+
+    def test_falls_back_to_pr_view_by_branch(self, mock_stack, mock_github):
+        entries = [
+            StackEntry(branch="user/msg-2/a", index=0, stack_id="msg-2", merge_base="user/msg-1/c"),
+        ]
+        mock_stack.read_entry.return_value = None
+        mock_github.pr_view_by_branch.return_value = {"state": "MERGED"}
+
+        assert _is_cross_stack_base_merged("user/msg-1/c", entries) is True
+        mock_github.pr_view_by_branch.assert_called_once_with("user/msg-1/c")
+
+    def test_returns_false_when_all_lookups_fail(self, mock_stack, mock_github):
+        entries = [
+            StackEntry(branch="user/msg-2/a", index=0, stack_id="msg-2", merge_base="user/msg-1/c"),
+        ]
+        mock_stack.read_entry.return_value = None
+        mock_github.pr_view_by_branch.return_value = None
+
+        assert _is_cross_stack_base_merged("user/msg-1/c", entries) is False
+
+
+@patch("spectrum.cli.github")
+@patch("spectrum.cli.git")
+@patch("spectrum.cli.stack")
+class TestSyncCrossStack:
+    def test_retargets_when_cross_stack_base_merged(self, mock_stack, mock_git, mock_github):
+        """sync retargets entry to master when its cross-stack dependency is merged."""
+        entries = [
+            StackEntry(
+                branch="user/msg-2/a",
+                index=0,
+                stack_id="msg-2",
+                merge_base="user/msg-1/c",
+                pr_number=50,
+            ),
+        ]
+        mock_stack.current_entry.return_value = entries[0]
+        mock_stack.get_stack.return_value = entries
+        mock_git.current_branch.return_value = "user/msg-2/a"
+        mock_git.merge_base.return_value = "abc123"
+        # No same-stack merges: entry #50 is OPEN
+        mock_github.pr_view.side_effect = lambda pr: (
+            {"state": "OPEN"} if pr == 50 else {"state": "MERGED"}
+        )
+        # Cross-stack check: read_entry returns a cross-stack entry with PR #99
+        cross_entry = StackEntry(
+            branch="user/msg-1/c", index=2, stack_id="msg-1",
+            merge_base="user/msg-1/b", pr_number=99,
+        )
+        mock_stack.read_entry.return_value = cross_entry
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["sync"])
+
+        assert result.exit_code == 0
+        assert "retargeted to master" in result.output
+        assert "dependency user/msg-1/c merged" in result.output
+        mock_git.set_branch_config.assert_any_call(
+            "user/msg-2/a", "gh-merge-base", "master"
+        )
+        mock_github.pr_edit_base.assert_any_call(50, "master")
+
+    def test_does_not_retarget_when_cross_stack_base_open(self, mock_stack, mock_git, mock_github):
+        """sync does NOT retarget when cross-stack dependency PR is still open."""
+        entries = [
+            StackEntry(
+                branch="user/msg-2/a",
+                index=0,
+                stack_id="msg-2",
+                merge_base="user/msg-1/c",
+                pr_number=50,
+            ),
+        ]
+        mock_stack.current_entry.return_value = entries[0]
+        mock_stack.get_stack.return_value = entries
+        mock_git.current_branch.return_value = "user/msg-2/a"
+        mock_git.merge_base.return_value = "abc123"
+        # Same-stack merge check: entry #50 is OPEN
+        mock_github.pr_view.return_value = {"state": "OPEN"}
+        # Cross-stack check: read_entry returns entry with PR #99, but it's OPEN
+        cross_entry = StackEntry(
+            branch="user/msg-1/c", index=2, stack_id="msg-1",
+            merge_base="user/msg-1/b", pr_number=99,
+        )
+        mock_stack.read_entry.return_value = cross_entry
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["sync"])
+
+        assert result.exit_code == 0
+        assert "retargeted to master" not in result.output

@@ -130,7 +130,7 @@ Dropped [b] user/msg-3391-preserve-aggregator-response-kind/b
 
 | Command | Description |
 |---------|-------------|
-| `sp create <branch>` | Start a new stack from a Linear branch name |
+| `sp create <branch> [--on <branch>]` | Start a new stack (optionally based on another branch) |
 | `sp add` | Add a new part to the current stack |
 | `sp status` (`st`) | Show the current stack with diffstats |
 | `sp switch <letter>` (`sw`) | Switch to a stack part (a, b, c, ...) |
@@ -185,6 +185,17 @@ git add <files>
 git rebase --continue
 sp restack             # resume from where it stopped
 ```
+
+### Dependent stacks (stack on top of another stack)
+
+```
+sp create user/msg-200-bar --on user/msg-100-foo/c
+# msg-200 stack starts from the tip of msg-100's last branch
+sp add
+sp submit --draft   # PRs target msg-100's branch, not master
+```
+
+When the dependency stack's PR merges, `sp sync` detects it and retargets your PRs to master automatically.
 
 ### Adopt existing branches into a stack
 

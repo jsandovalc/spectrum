@@ -3,9 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- `spectrum create --on <branch>`: start a stack from another branch instead of master, enabling dependent stacks
+- `spectrum sync` cross-stack retargeting: when a dependency stack's PR merges, sync detects it and retargets PRs to master
 - `spectrum restack`: rebase all descendants of the current branch (local only — no fetch, no push). Use after amending a mid-stack branch to cascade changes forward.
 
 ### Changed
+- Extracted shared retarget-to-master logic into `_retarget_to_master` helper, used by both same-stack and cross-stack merge handling in `sync`
 - Extracted shared rebase loop into `_rebase_entries` helper, used by both `sync` and `restack`
 
 ### Previous
