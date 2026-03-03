@@ -38,7 +38,7 @@ class TestFoldCommand:
         mock_stack.get_stack.return_value = [entry_a, entry_b]
 
         runner = CliRunner()
-        result = runner.invoke(main, ["fold"])
+        result = runner.invoke(main, ["fold", "-y"])
 
         assert result.exit_code == 0
         assert "Folded [b] into [a]" in result.output
@@ -101,7 +101,7 @@ class TestFoldCommand:
         mock_stack.get_stack.return_value = [entry_a, entry_b, entry_c]
 
         runner = CliRunner()
-        result = runner.invoke(main, ["fold"])
+        result = runner.invoke(main, ["fold", "-y"])
 
         assert result.exit_code == 0
         # entry_c should be retargeted to entry_a
@@ -128,7 +128,7 @@ class TestFoldCommand:
         mock_stack.get_stack.return_value = [entry_a, entry_b]
 
         runner = CliRunner()
-        result = runner.invoke(main, ["fold"])
+        result = runner.invoke(main, ["fold", "-y"])
 
         assert result.exit_code == 0
         assert "Folded [b] into [a]" in result.output
@@ -153,7 +153,7 @@ class TestFoldCommand:
         mock_git.merge_ff_only.side_effect = GitError("not fast-forward")
 
         runner = CliRunner()
-        result = runner.invoke(main, ["fold"])
+        result = runner.invoke(main, ["fold", "-y"])
 
         assert result.exit_code != 0
         assert "not fast-forward" in result.output

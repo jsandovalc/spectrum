@@ -100,8 +100,13 @@ Sync rebases from your current position onward — on `[a]` it rebases the whole
 
 ### 5. Navigate and fix earlier parts
 
+Navigation commands show diff stats after switching:
+
 ```
 $ sp prev          # move to previous part
+Switched to [a] user/msg-3391-preserve-aggregator-response-kind/a
+  +15 -3, 2 files
+
 $ sp next          # move to next part
 $ sp switch a      # or jump directly by letter
 ```
@@ -119,14 +124,26 @@ Rebasing [b] onto [a]... done
 
 ### 6. Drop a part
 
-Remove a part from the stack. The chain is automatically re-linked:
+Remove a part from the stack. The chain is automatically re-linked. Destructive commands (`drop`, `fold`, `land`) prompt for confirmation:
 
 ```
 $ sp drop b
+Drop [b] user/msg-3391-preserve-aggregator-response-kind/b? [y/N]: y
 Dropped [b] user/msg-3391-preserve-aggregator-response-kind/b
 ```
 
+Use `-y` to skip the prompt (useful in scripts).
+
 ## Commands
+
+Commands are organized into groups in `--help`:
+
+**Stack:** `create`, `add`, `drop`, `adopt`
+**Navigate:** `switch` (`sw`), `next`, `prev`, `top`, `bottom`
+**Publish:** `submit`, `pr` (`o`), `title`, `land`, `wip`
+**Edit:** `sync`, `restack`, `squash`, `fold`, `move`, `rename`
+**Info:** `status` (`st`), `log` (`lg`)
+**Recovery:** `continue`, `abort`
 
 | Command | Description |
 |---------|-------------|
@@ -141,13 +158,13 @@ Dropped [b] user/msg-3391-preserve-aggregator-response-kind/b
 | `sp submit [--draft] [-r reviewer]` | Push and create/update PRs for all parts |
 | `sp sync [--no-push]` | Fetch, detect merges, rebase from current position |
 | `sp restack` | Rebase descendants of the current branch (local only) |
-| `sp drop [letter]` | Remove a part from the stack |
+| `sp drop [letter] [-y]` | Remove a part from the stack (prompts for confirmation) |
 | `sp adopt <branch> [...]` | Import existing branches into a stack |
 | `sp pr` (`o`) | Open current branch's PR in the browser |
 | `sp title <title>` | Set the PR title for the current branch |
-| `sp land [--method squash\|merge\|rebase]` | Merge the bottom PR and update the stack |
+| `sp land [--method squash\|merge\|rebase] [-y]` | Merge the bottom PR and update the stack |
 | `sp squash [-m message]` | Squash all commits in the current branch into one |
-| `sp fold` | Merge the current branch into its parent |
+| `sp fold [-y]` | Merge the current branch into its parent |
 | `sp move --onto <letter>` | Move the current branch to be a child of another branch |
 | `sp rename <new-name>` | Rename the current branch (local + remote) |
 | `sp wip [on\|off]` | Toggle WIP status (WIP branches are skipped during submit) |
@@ -295,9 +312,28 @@ Operation state (for `continue`/`abort`) is saved to `.git/spectrum-state.json` 
 
 No extra files or directories. State survives rebases.
 
+## Output
+
+All output is color-coded: letter markers in cyan, success in green, errors in red, warnings in yellow, secondary info dimmed. The `log` command shows PR titles, CI status, and review status alongside the stack graph:
+
+```
+Stack: msg-3391 (2 parts)
+
+  ● [b] user/msg-3391-foo/b           <-- you are here
+  │     PR #456 · Add migration scripts
+  │     ✓ CI passing · ✓ Approved · +20 -5, 3 files
+  │
+  ○ [a] user/msg-3391-foo/a
+        PR #455 · Preserve aggregator response kind
+        ✓ CI passing · ○ Review required · +15 -3, 2 files
+```
+
+Color respects `NO_COLOR` environment variable.
+
 ## Safety
 
 - All pushes use `--force-with-lease`
+- Destructive commands (`drop`, `fold`, `land`) prompt for confirmation; use `-y` to skip
 - Rebase conflicts save state and can be resumed with `spectrum continue` or cancelled with `spectrum abort`
 - PR body edits only touch the `<!-- SPECTRUM:START -->` / `<!-- SPECTRUM:END -->` region
 

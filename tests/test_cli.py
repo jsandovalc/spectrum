@@ -638,7 +638,7 @@ class TestDropCommand:
         )
 
         runner = CliRunner()
-        result = runner.invoke(main, ["drop"])
+        result = runner.invoke(main, ["drop", "-y"])
 
         assert result.exit_code == 0
         # Should retarget [c]'s merge_base to [a]
@@ -662,7 +662,7 @@ class TestDropCommand:
         mock_stack.extract_letter.return_value = None
 
         runner = CliRunner()
-        result = runner.invoke(main, ["drop"])
+        result = runner.invoke(main, ["drop", "-y"])
 
         assert result.exit_code == 0
         mock_git.checkout.assert_called_with("user/msg-1/a")
@@ -680,7 +680,7 @@ class TestDropCommand:
         mock_stack.letter_to_index.return_value = 0
 
         runner = CliRunner()
-        result = runner.invoke(main, ["drop", "a"])
+        result = runner.invoke(main, ["drop", "-y", "a"])
 
         assert result.exit_code == 0
         mock_git.checkout.assert_called_with("user/msg-1/b")
@@ -696,7 +696,7 @@ class TestDropCommand:
         mock_stack.extract_letter.return_value = None
 
         runner = CliRunner()
-        result = runner.invoke(main, ["drop"])
+        result = runner.invoke(main, ["drop", "-y"])
 
         assert result.exit_code == 0
         mock_stack.remove_entry.assert_called_once_with("user/msg-1/a")
@@ -716,7 +716,7 @@ class TestDropCommand:
         mock_stack.extract_letter.return_value = None
 
         runner = CliRunner()
-        result = runner.invoke(main, ["drop", "b"])
+        result = runner.invoke(main, ["drop", "-y", "b"])
 
         assert result.exit_code == 0
         mock_stack.remove_entry.assert_called_once_with("user/msg-1/b")
@@ -1341,3 +1341,243 @@ class TestSyncCrossStack:
 
         assert result.exit_code == 0
         assert "retargeted to master" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# Command grouping tests
+# ---------------------------------------------------------------------------
+
+
+class TestCommandGrouping:
+    def test_help_shows_group_headings(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        assert "Stack:" in result.output
+        assert "Navigate:" in result.output
+        assert "Publish:" in result.output
+        assert "Edit:" in result.output
+        assert "Info:" in result.output
+        assert "Recovery:" in result.output
+
+    def test_create_under_stack_group(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+        # Find the Stack section and check create is inside it
+        lines = result.output.splitlines()
+        stack_idx = next(i for i, l in enumerate(lines) if "Stack:" in l)
+        navigate_idx = next(i for i, l in enumerate(lines) if "Navigate:" in l)
+        stack_section = "\n".join(lines[stack_idx:navigate_idx])
+        assert "create" in stack_section
+
+    def test_aliases_still_shown_inline(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+        assert "status (st)" in result.output
+        assert "switch (sw)" in result.output
+        assert "log (lg)" in result.output
+        assert "pr (o)" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Confirmation behavior tests
+# ---------------------------------------------------------------------------
+
+
+@patch("spectrum.cli.git", autospec=True)
+@patch("spectrum.cli.stack", autospec=True)
+class TestDropConfirmation:
+    def test_drop_aborts_without_yes(self, mock_stack, mock_git):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+        ]
+        mock_stack.current_entry.return_value = entries[0]
+        mock_stack.current_stack.return_value = entries
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["drop"])
+
+        assert result.exit_code != 0
+        assert "Aborted" in result.output
+        mock_stack.remove_entry.assert_not_called()
+
+    def test_drop_proceeds_with_yes(self, mock_stack, mock_git):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+        ]
+        mock_stack.current_entry.return_value = entries[0]
+        mock_stack.current_stack.return_value = entries
+        mock_stack.extract_letter.return_value = None
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["drop", "-y"])
+
+        assert result.exit_code == 0
+        assert "Dropped" in result.output
+
+
+@patch("spectrum.cli.git", autospec=True)
+@patch("spectrum.cli.stack", autospec=True)
+class TestFoldConfirmation:
+    def test_fold_aborts_without_yes(self, mock_stack, mock_git):
+        entry_a = StackEntry(
+            branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master",
+        )
+        entry_b = StackEntry(
+            branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a",
+        )
+        mock_stack.current_entry.return_value = entry_b
+        mock_stack.get_stack.return_value = [entry_a, entry_b]
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["fold"])
+
+        assert result.exit_code != 0
+        assert "Aborted" in result.output
+        mock_git.merge_ff_only.assert_not_called()
+
+
+@patch("spectrum.cli.git", autospec=True)
+@patch("spectrum.cli.github", autospec=True)
+@patch("spectrum.cli.stack", autospec=True)
+class TestLandConfirmation:
+    def test_land_aborts_without_yes(self, mock_stack, mock_github, mock_git):
+        entry_a = StackEntry(
+            branch="user/msg-1/a", index=0, stack_id="msg-1",
+            merge_base="master", pr_number=100,
+        )
+        mock_stack.current_entry.return_value = entry_a
+        mock_stack.get_stack.return_value = [entry_a]
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["land"])
+
+        assert result.exit_code != 0
+        assert "Aborted" in result.output
+        mock_github.pr_merge.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Richer log output tests
+# ---------------------------------------------------------------------------
+
+
+@patch("spectrum.cli.github", autospec=True)
+@patch("spectrum.cli.git", autospec=True)
+@patch("spectrum.cli.stack", autospec=True)
+class TestLogRichOutput:
+    def test_log_shows_title(self, mock_stack, mock_git, mock_github):
+        entries = [
+            StackEntry(
+                branch="user/msg-1/a", index=0, stack_id="msg-1",
+                merge_base="master", pr_number=100,
+            ),
+        ]
+        mock_stack.current_stack.return_value = entries
+        mock_git.current_branch.return_value = "user/msg-1/a"
+        mock_github.pr_view.return_value = {
+            "isDraft": False,
+            "title": "MSG-1 [a]: Fix aggregator",
+            "statusCheckRollup": [],
+            "reviewDecision": "",
+        }
+        mock_git.diff_shortstat.return_value = "+10 -2, 1 file"
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["log"])
+
+        assert result.exit_code == 0
+        assert "Fix aggregator" in result.output
+
+    def test_log_shows_ci_passing(self, mock_stack, mock_git, mock_github):
+        entries = [
+            StackEntry(
+                branch="user/msg-1/a", index=0, stack_id="msg-1",
+                merge_base="master", pr_number=100,
+            ),
+        ]
+        mock_stack.current_stack.return_value = entries
+        mock_git.current_branch.return_value = "user/msg-1/a"
+        mock_github.pr_view.return_value = {
+            "isDraft": False,
+            "title": "Fix it",
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "SUCCESS"},
+            ],
+            "reviewDecision": "APPROVED",
+        }
+        mock_git.diff_shortstat.return_value = "+10 -2, 1 file"
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["log"])
+
+        assert result.exit_code == 0
+        assert "CI passing" in result.output
+        assert "Approved" in result.output
+
+    def test_log_shows_ci_failing(self, mock_stack, mock_git, mock_github):
+        entries = [
+            StackEntry(
+                branch="user/msg-1/a", index=0, stack_id="msg-1",
+                merge_base="master", pr_number=100,
+            ),
+        ]
+        mock_stack.current_stack.return_value = entries
+        mock_git.current_branch.return_value = "user/msg-1/a"
+        mock_github.pr_view.return_value = {
+            "isDraft": False,
+            "title": "Fix it",
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "FAILURE"},
+            ],
+            "reviewDecision": "CHANGES_REQUESTED",
+        }
+        mock_git.diff_shortstat.return_value = "+10 -2, 1 file"
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["log"])
+
+        assert result.exit_code == 0
+        assert "CI failing" in result.output
+        assert "Changes requested" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Diff stats in navigation/submit tests
+# ---------------------------------------------------------------------------
+
+
+@patch("spectrum.cli.git", autospec=True)
+@patch("spectrum.cli.stack", autospec=True)
+class TestNavigationDiffStats:
+    def test_switch_shows_diff_stat(self, mock_stack, mock_git):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+        ]
+        mock_stack.current_stack.return_value = entries
+        mock_stack.letter_to_index.return_value = 0
+        mock_git.diff_shortstat.return_value = "+15 -3, 2 files"
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["switch", "a"])
+
+        assert result.exit_code == 0
+        assert "+15 -3, 2 files" in result.output
+
+    def test_next_shows_diff_stat(self, mock_stack, mock_git):
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master"),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+        ]
+        mock_stack.current_entry.return_value = entries[0]
+        mock_stack.current_stack.return_value = entries
+        mock_git.diff_shortstat.return_value = "+20 -5, 3 files"
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["next"])
+
+        assert result.exit_code == 0
+        assert "+20 -5, 3 files" in result.output

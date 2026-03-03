@@ -107,11 +107,14 @@ def pr_merge(pr_number: int, *, method: str = "squash") -> None:
     _run_gh(["pr", "merge", str(pr_number), f"--{method}", "--delete-branch"])
 
 
-def pr_view(pr_number: int) -> dict:
+def pr_view(pr_number: int, *, extra_fields: list[str] | None = None) -> dict:
     """Get PR details as a dict."""
+    fields = "number,title,body,state,isDraft,baseRefName,headRefName,url"
+    if extra_fields:
+        fields += "," + ",".join(extra_fields)
     result = _run_gh([
         "pr", "view", str(pr_number),
-        "--json", "number,title,body,state,isDraft,baseRefName,headRefName,url",
+        "--json", fields,
     ])
     return json.loads(result.stdout)
 

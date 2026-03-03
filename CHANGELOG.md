@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- Colored terminal output: all CLI output uses color-coded styling (cyan for letters/PR numbers, green for success, red for errors, yellow for warnings, dim for secondary info). Centralized in `ui.py`.
+- Grouped command help: `--help` organizes commands into 6 groups (Stack, Navigate, Publish, Edit, Info, Recovery) instead of a flat list
+- Confirmation prompts on destructive commands: `drop`, `fold`, and `land` now prompt before executing. Use `--yes`/`-y` to skip.
+- Richer `log` output: shows PR title, CI status (passing/failing/running), and review status (approved/changes requested) alongside the stack graph
+- Diff stats in navigation: `switch`, `next`, `prev`, `top`, `bottom` show diff stats after switching branches
+- Diff stats in `submit` summary: each entry in the post-submit summary includes diff stats
 - `spectrum pr` (`o`): open current branch's PR in the browser via `gh pr view --web`
 - `spectrum title <title>`: set PR title from the CLI; updates GitHub immediately if a PR exists
 - `spectrum land [--method]`: merge the bottom PR (squash/merge/rebase), retarget the stack, and rebase remaining entries

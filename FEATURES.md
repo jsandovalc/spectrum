@@ -4,6 +4,8 @@
 
 Spectrum's current commands: `create`, `add`, `status`, `switch`, `next`, `prev`, `top`, `bottom`, `submit`, `sync`, `drop`, `adopt`, `log`, `pr`, `title`, `land`, `rename`, `fold`, `move`, `squash`, `wip`, `continue`, `abort`, `completion`.
 
+**UX improvements (implemented):** Colored terminal output via centralized `ui.py` styling helpers, grouped command help, confirmation prompts on destructive commands (`drop`, `fold`, `land`), diff stats in navigation commands, and richer `log` output with PR titles, CI status, and review status.
+
 ---
 
 ## Navigation & Visualization

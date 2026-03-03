@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 import click
 
-from spectrum import git, github, pr_metadata, stack
+from spectrum import git, github, pr_metadata, stack, ui
 from spectrum.git import GitError, RebaseConflictError
 from spectrum.github import GhError
 from spectrum.opstate import OperationState
@@ -20,6 +20,15 @@ class AliasGroup(click.Group):
         "o": "pr",
         "st": "status",
         "sw": "switch",
+    }
+
+    COMMAND_GROUPS: dict[str, list[str]] = {
+        "Stack": ["create", "add", "drop", "adopt"],
+        "Navigate": ["switch", "next", "prev", "top", "bottom"],
+        "Publish": ["submit", "pr", "title", "land", "wip"],
+        "Edit": ["sync", "restack", "squash", "fold", "move", "rename"],
+        "Info": ["status", "log"],
+        "Recovery": ["continue", "abort"],
     }
 
     @property
@@ -36,8 +45,9 @@ class AliasGroup(click.Group):
         return super().list_commands(ctx)
 
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
-        commands = []
-        for subcommand in self.list_commands(ctx):
+        all_commands = self.list_commands(ctx)
+        cmd_map: dict[str, tuple[str, str]] = {}
+        for subcommand in all_commands:
             cmd = self.get_command(ctx, subcommand)
             if cmd is None or cmd.hidden:
                 continue
@@ -47,10 +57,16 @@ class AliasGroup(click.Group):
                 display_name = f"{subcommand} ({', '.join(sorted(aliases))})"
             else:
                 display_name = subcommand
-            commands.append((display_name, help_text))
-        if commands:
-            with formatter.section("Commands"):
-                formatter.write_dl(commands)
+            cmd_map[subcommand] = (display_name, help_text)
+
+        for group_name, group_cmds in self.COMMAND_GROUPS.items():
+            entries = []
+            for cmd_name in group_cmds:
+                if cmd_name in cmd_map:
+                    entries.append(cmd_map[cmd_name])
+            if entries:
+                with formatter.section(group_name):
+                    formatter.write_dl(entries)
 
 
 @click.group(cls=AliasGroup)
@@ -112,9 +128,9 @@ def create(branch_name: str, on_branch: str | None) -> None:
     )
     stack.write_entry(entry)
 
-    based_on = f" (based on {on_branch})" if on_branch else ""
-    click.echo(f"Created stack {stack_id} on branch:")
-    click.echo(f"  [a] {first_branch}{based_on}")
+    based_on = f" {ui.dim(f'(based on {on_branch})')}" if on_branch else ""
+    click.echo(f"{ui.success('Created')} stack {ui.header(stack_id)} on branch:")
+    click.echo(f"  {ui.letter('[a]')} {first_branch}{based_on}")
 
 
 # ---------------------------------------------------------------------------
@@ -159,8 +175,8 @@ def add() -> None:
     stack.write_entry(new_entry)
 
     total = len(full_stack) + 1
-    click.echo("Created branch:")
-    click.echo(f"  [{next_letter}] {new_branch} (part {total} of {total})")
+    click.echo(f"{ui.success('Created')} branch:")
+    click.echo(f"  {ui.bracket_letter(next_letter)} {new_branch} {ui.dim(f'(part {total} of {total})')}")
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +195,7 @@ def status() -> None:
 
     current_branch = git.current_branch()
     stack_id = entries[0].stack_id
-    click.echo(f"Stack: {stack_id} ({len(entries)} part{'s' if len(entries) != 1 else ''})")
+    click.echo(f"{ui.header('Stack:')} {stack_id} ({len(entries)} part{'s' if len(entries) != 1 else ''})")
     click.echo()
 
     repo_url = None
@@ -190,29 +206,51 @@ def status() -> None:
             pass
 
     for entry in entries:
-        marker = "  <-- you are here" if entry.branch == current_branch else ""
-        click.echo(f"  [{entry.letter}] {entry.branch}{marker}")
+        is_current = entry.branch == current_branch
+        if is_current:
+            marker = f"  {ui.current_label('<-- you are here')}"
+        else:
+            marker = ""
+        click.echo(f"  {ui.bracket_letter(entry.letter)} {entry.branch}{marker}")
 
         pr_info_parts: list[str] = []
         if entry.pr_number:
-            pr_info_parts.append(f"PR #{entry.pr_number}")
+            pr_info_parts.append(ui.pr_number(f"PR #{entry.pr_number}"))
         base_label = entry.merge_base
         sibling_letter = stack.extract_letter(entry.merge_base)
         if sibling_letter:
             base_label = f"[{sibling_letter}]"
-        pr_info_parts.append(f"<- {base_label}")
+        pr_info_parts.append(ui.dim(f"<- {base_label}"))
         click.echo(f"      {' '.join(pr_info_parts)}")
 
         if entry.pr_number and repo_url:
-            click.echo(f"      {repo_url}/pull/{entry.pr_number}")
+            click.echo(f"      {ui.dim(f'{repo_url}/pull/{entry.pr_number}')}")
 
-        try:
-            stat = git.diff_shortstat(entry.merge_base, entry.branch)
-            click.echo(f"      {stat}")
-        except GitError:
-            pass
+        stat = _get_diff_stat(entry.merge_base, entry.branch)
+        if stat:
+            click.echo(f"      {ui.dim(stat)}")
 
         click.echo()
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_diff_stat(base: str, head: str) -> str | None:
+    """Return diff shortstat or None on error."""
+    try:
+        return git.diff_shortstat(base, head)
+    except GitError:
+        return None
+
+
+def _show_diff_stat(entry: stack.StackEntry) -> None:
+    """Show diff stat for an entry, silently ignoring errors."""
+    stat = _get_diff_stat(entry.merge_base, entry.branch)
+    if stat:
+        click.echo(f"  {ui.dim(stat)}")
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +284,8 @@ def switch(part: str) -> None:
     except GitError as e:
         raise click.ClickException(str(e)) from e
 
-    click.echo(f"Switched to [{part}] {target.branch}")
+    click.echo(f"Switched to {ui.bracket_letter(part)} {target.branch}")
+    _show_diff_stat(target)
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +312,8 @@ def next_cmd() -> None:
     except GitError as e:
         raise click.ClickException(str(e)) from e
 
-    click.echo(f"Switched to [{target.letter}] {target.branch}")
+    click.echo(f"Switched to {ui.bracket_letter(target.letter)} {target.branch}")
+    _show_diff_stat(target)
 
 
 @main.command()
@@ -295,7 +335,8 @@ def prev() -> None:
     except GitError as e:
         raise click.ClickException(str(e)) from e
 
-    click.echo(f"Switched to [{target.letter}] {target.branch}")
+    click.echo(f"Switched to {ui.bracket_letter(target.letter)} {target.branch}")
+    _show_diff_stat(target)
 
 
 # ---------------------------------------------------------------------------
@@ -320,7 +361,8 @@ def top() -> None:
         git.checkout(target.branch)
     except GitError as e:
         raise click.ClickException(str(e)) from e
-    click.echo(f"Switched to [{target.letter}] {target.branch}")
+    click.echo(f"Switched to {ui.bracket_letter(target.letter)} {target.branch}")
+    _show_diff_stat(target)
 
 
 @main.command()
@@ -340,7 +382,8 @@ def bottom() -> None:
         git.checkout(target.branch)
     except GitError as e:
         raise click.ClickException(str(e)) from e
-    click.echo(f"Switched to [{target.letter}] {target.branch}")
+    click.echo(f"Switched to {ui.bracket_letter(target.letter)} {target.branch}")
+    _show_diff_stat(target)
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +463,7 @@ def submit(draft: bool, reviewer: str | None) -> None:
     active_entries = [e for e in entries if not e.wip]
     wip_entries = [e for e in entries if e.wip]
     for wip_entry in wip_entries:
-        click.echo(f"Skipping [{wip_entry.letter}] (WIP)")
+        click.echo(f"{ui.warning('Skipping')} {ui.bracket_letter(wip_entry.letter)} {ui.warning('(WIP)')}")
 
     # Push all active branches
     branches = [e.branch for e in active_entries]
@@ -431,7 +474,7 @@ def submit(draft: bool, reviewer: str | None) -> None:
         except GitError as e:
             raise click.ClickException(str(e)) from e
         for b in branches:
-            click.echo(f"  {b} -> origin (pushed)")
+            click.echo(f"  {b} -> origin {ui.success('(pushed)')}")
 
     click.echo()
 
@@ -462,7 +505,7 @@ def submit(draft: bool, reviewer: str | None) -> None:
     # Create PRs for active branches that don't have them yet
     for entry in active_entries:
         if entry.pr_number is not None:
-            click.echo(f"PR #{entry.pr_number} already exists for [{entry.letter}]")
+            click.echo(f"{ui.pr_number(f'PR #{entry.pr_number}')} already exists for {ui.bracket_letter(entry.letter)}")
             continue
 
         title = _get_title(entry)
@@ -482,26 +525,31 @@ def submit(draft: bool, reviewer: str | None) -> None:
 
         entry.pr_number = pr_number
         git.set_branch_config(entry.branch, "spectrum-pr", str(pr_number))
-        click.echo(f"Created PR #{pr_number}: {title}")
+        click.echo(f"{ui.success('Created')} {ui.pr_number(f'PR #{pr_number}')}: {title}")
 
     # Update all PR bodies with stack metadata
     click.echo()
     _update_all_pr_bodies(entries, repo_url)
 
     # Print summary
-    click.echo("Stack:")
+    click.echo(ui.header("Stack:"))
     for entry in entries:
         base_label = entry.merge_base
         sibling_letter = stack.extract_letter(entry.merge_base)
         if sibling_letter:
             base_label = f"[{sibling_letter}]"
-        status_label = "(draft)" if draft else ""
         title_from_config = git.get_branch_config(entry.branch, "spectrum-title") or ""
-        click.echo(
-            f"  #{entry.pr_number} [{entry.letter}] {title_from_config}  "
-            f"<- {base_label}  {status_label}"
-        )
-        click.echo(f"      {repo_url}/pull/{entry.pr_number}")
+        parts = [
+            f"  {ui.pr_number(f'#{entry.pr_number}')} {ui.bracket_letter(entry.letter)} {title_from_config}",
+            ui.dim(f"<- {base_label}"),
+        ]
+        if draft:
+            parts.append(ui.warning("(draft)"))
+        stat = _get_diff_stat(entry.merge_base, entry.branch)
+        if stat:
+            parts.append(ui.dim(stat))
+        click.echo("  ".join(parts))
+        click.echo(f"      {ui.dim(f'{repo_url}/pull/{entry.pr_number}')}")
 
 
 # ---------------------------------------------------------------------------
@@ -521,7 +569,7 @@ def pr() -> None:
         raise click.ClickException(
             f"No PR found for [{current.letter}]. Run 'spectrum submit' first."
         )
-    click.echo(f"Opening PR #{current.pr_number} for [{current.letter}]...")
+    click.echo(f"Opening {ui.pr_number(f'PR #{current.pr_number}')} for {ui.bracket_letter(current.letter)}...")
     try:
         github.pr_view_web(current.branch)
     except GhError as e:
@@ -551,9 +599,9 @@ def title(title: str) -> None:
             github.pr_edit_title(current.pr_number, formatted)
         except GhError as e:
             raise click.ClickException(str(e)) from e
-        click.echo(f"Updated PR #{current.pr_number} title: {formatted}")
+        click.echo(f"{ui.success('Updated')} {ui.pr_number(f'PR #{current.pr_number}')} title: {formatted}")
     else:
-        click.echo("Title saved. Will be used on next submit.")
+        click.echo(f"{ui.success('Title saved.')} Will be used on next submit.")
 
 
 # ---------------------------------------------------------------------------
@@ -568,7 +616,8 @@ def title(title: str) -> None:
     default="squash",
     help="Merge method",
 )
-def land(method: str) -> None:
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+def land(method: str, yes: bool) -> None:
     """Merge the bottom PR and update the stack."""
     current = stack.current_entry()
     if current is None:
@@ -584,7 +633,13 @@ def land(method: str) -> None:
             f"No PR found for [{target.letter}]. Run 'spectrum submit' first."
         )
 
-    click.echo(f"Merging PR #{target.pr_number} [{target.letter}] via {method}...")
+    if not yes:
+        click.confirm(
+            f"Merge PR #{target.pr_number} [{target.letter}] via {method}?",
+            abort=True,
+        )
+
+    click.echo(f"Merging {ui.pr_number(f'PR #{target.pr_number}')} {ui.bracket_letter(target.letter)} via {method}...")
     try:
         github.pr_merge(target.pr_number, method=method)
     except GhError as e:
@@ -601,7 +656,7 @@ def land(method: str) -> None:
 
     remaining = [e for e in entries if e.branch != target.branch]
     if not remaining:
-        click.echo("All parts landed! Stack is empty.")
+        click.echo(ui.success("All parts landed! Stack is empty."))
         return
 
     # Fetch and rebase remaining
@@ -624,7 +679,7 @@ def land(method: str) -> None:
     except GitError:
         pass
 
-    click.echo(f"Landed [{target.letter}]. {len(remaining)} part(s) remaining.")
+    click.echo(f"{ui.success('Landed')} {ui.bracket_letter(target.letter)}. {len(remaining)} part(s) remaining.")
 
 
 # ---------------------------------------------------------------------------
@@ -648,7 +703,7 @@ def _rebase_entries(
     pre_rebase_tip: dict[str, str] = {}
     for i, entry in enumerate(entries):
         onto = resolve_onto(entry.merge_base) if resolve_onto else entry.merge_base
-        click.echo(f"Rebasing [{entry.letter}] onto {onto}... ", nl=False)
+        click.echo(f"Rebasing {ui.bracket_letter(entry.letter)} onto {onto}... ", nl=False)
         try:
             if entry.merge_base in pre_rebase_tip:
                 old_base = pre_rebase_tip[entry.merge_base]
@@ -659,10 +714,10 @@ def _rebase_entries(
                 )
             pre_rebase_tip[entry.branch] = git.rev_parse(entry.branch)
             git.rebase_onto(entry.branch, onto, old_base)
-            click.echo("done")
+            click.echo(ui.success("done"))
             rebased.append(entry.branch)
         except RebaseConflictError:
-            click.echo("CONFLICT")
+            click.echo(ui.error("CONFLICT"))
             # Save state for continue/abort
             remaining = entries[i:]
             uses_origin_master = resolve_onto is not None
@@ -679,7 +734,7 @@ def _rebase_entries(
             )
             op_state.save()
             click.echo(
-                f"\nConflict rebasing [{entry.letter}] onto {onto}. "
+                f"\n{ui.error('Conflict')} rebasing {ui.bracket_letter(entry.letter)} onto {onto}. "
                 "Resolve conflicts, then:\n"
                 "  git add <files>\n"
                 "  spectrum continue\n"
@@ -701,8 +756,8 @@ def _retarget_to_master(entry: stack.StackEntry, reason: str | None = None) -> N
             github.pr_edit_base(entry.pr_number, "master")
         except GhError:
             pass
-    suffix = f" ({reason})" if reason else ""
-    click.echo(f"  [{entry.letter}] retargeted to master{suffix}")
+    suffix = f" {ui.dim(f'({reason})')}" if reason else ""
+    click.echo(f"  {ui.bracket_letter(entry.letter)} retargeted to master{suffix}")
 
 
 # ---------------------------------------------------------------------------
@@ -775,7 +830,7 @@ def sync(no_push: bool) -> None:
             pr_data = github.pr_view(entry.pr_number)
             if pr_data.get("state") == "MERGED":
                 merged_indices.add(entry.index)
-                click.echo(f"  [{entry.letter}] PR #{entry.pr_number} has been merged")
+                click.echo(f"  {ui.bracket_letter(entry.letter)} {ui.pr_number(f'PR #{entry.pr_number}')} has been merged")
         except GhError:
             pass
 
@@ -800,7 +855,7 @@ def sync(no_push: bool) -> None:
         entries = [e for e in entries if e.index not in merged_indices]
 
     if not entries:
-        click.echo("All parts merged! Stack is empty.")
+        click.echo(ui.success("All parts merged! Stack is empty."))
         return
 
     # Check for cross-stack dependencies that have been merged
@@ -840,7 +895,7 @@ def sync(no_push: bool) -> None:
         git.push_force_with_lease(branches_to_push)
     except GitError as e:
         raise click.ClickException(str(e)) from e
-    click.echo("Pushed.")
+    click.echo(ui.success("Pushed."))
 
     # Update PR metadata
     try:
@@ -857,7 +912,8 @@ def sync(no_push: bool) -> None:
 
 @main.command()
 @click.argument("part", required=False, default=None)
-def drop(part: str | None) -> None:
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+def drop(part: str | None, yes: bool) -> None:
     """Remove a part from the stack.
 
     PART is the letter to drop. Defaults to current branch.
@@ -881,6 +937,9 @@ def drop(part: str | None) -> None:
             )
     else:
         target = current
+
+    if not yes:
+        click.confirm(f"Drop [{target.letter}] {target.branch}?", abort=True)
 
     # Find the entry after the dropped one and retarget it
     successor = next((e for e in entries if e.merge_base == target.branch), None)
@@ -907,7 +966,7 @@ def drop(part: str | None) -> None:
             except GitError as e:
                 raise click.ClickException(str(e)) from e
 
-    click.echo(f"Dropped [{target.letter}] {target.branch}")
+    click.echo(f"{ui.success('Dropped')} {ui.bracket_letter(target.letter)} {target.branch}")
 
 
 # ---------------------------------------------------------------------------
@@ -951,7 +1010,7 @@ def rename(new_name: str) -> None:
     except GitError:
         pass  # Remote branch might not exist
 
-    click.echo(f"Renamed {old_name} -> {new_name}")
+    click.echo(f"{ui.success('Renamed')} {old_name} {ui.dim('->')} {new_name}")
 
 
 # ---------------------------------------------------------------------------
@@ -960,7 +1019,8 @@ def rename(new_name: str) -> None:
 
 
 @main.command()
-def fold() -> None:
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+def fold(yes: bool) -> None:
     """Merge the current branch into its parent."""
     current = stack.current_entry()
     if current is None:
@@ -979,6 +1039,9 @@ def fold() -> None:
         raise click.ClickException(
             f"Parent branch {current.merge_base} not found in stack."
         )
+
+    if not yes:
+        click.confirm(f"Fold [{current.letter}] into [{parent.letter}]?", abort=True)
 
     # Checkout parent and merge
     try:
@@ -1001,7 +1064,7 @@ def fold() -> None:
     except GitError:
         pass
 
-    click.echo(f"Folded [{current.letter}] into [{parent.letter}]")
+    click.echo(f"{ui.success('Folded')} {ui.bracket_letter(current.letter)} into {ui.bracket_letter(parent.letter)}")
 
 
 # ---------------------------------------------------------------------------
@@ -1058,7 +1121,7 @@ def move(onto: str) -> None:
         git.rebase_onto(current.branch, target.branch, old_merge_base)
     except RebaseConflictError:
         click.echo(
-            f"\nConflict rebasing [{current.letter}] onto [{onto}]. "
+            f"\n{ui.error('Conflict')} rebasing {ui.bracket_letter(current.letter)} onto {ui.bracket_letter(onto)}. "
             "Resolve conflicts, then:\n"
             "  git add <files>\n"
             "  git rebase --continue"
@@ -1070,7 +1133,7 @@ def move(onto: str) -> None:
     # Reindex
     stack.reindex_stack(current.stack_id)
 
-    click.echo(f"Moved [{current.letter}] onto [{onto}] ({target.branch})")
+    click.echo(f"{ui.success('Moved')} {ui.bracket_letter(current.letter)} onto {ui.bracket_letter(onto)} ({target.branch})")
 
 
 # ---------------------------------------------------------------------------
@@ -1086,32 +1149,50 @@ def _format_log(
 ) -> str:
     """Format a graphical stack view. Pure function — no I/O."""
     count = len(entries)
-    lines = [f"Stack: {stack_id} ({count} part{'s' if count != 1 else ''})", ""]
+    lines = [f"{ui.header('Stack:')} {stack_id} ({count} part{'s' if count != 1 else ''})", ""]
 
     reversed_entries = list(reversed(entries))
     for i, entry in enumerate(reversed_entries):
         is_current = entry["branch"] == current_branch
         is_last = i == len(reversed_entries) - 1
-        symbol = "●" if is_current else "○"
-        marker = "           <-- you are here" if is_current else ""
-        lines.append(f"  {symbol} [{entry['letter']}] {entry['branch']}{marker}")
+        if is_current:
+            symbol = ui.current_marker("●")
+            marker = f"           {ui.current_label('<-- you are here')}"
+        else:
+            symbol = ui.dim("○")
+            marker = ""
+        ltr = entry["letter"]
+        lines.append(f"  {symbol} {ui.bracket_letter(ltr)} {entry['branch']}{marker}")
 
-        detail_parts: list[str] = []
+        connector = ui.dim("│") if not is_last else " "
+
+        # Line 1: PR number + title
+        line1_parts: list[str] = []
         if entry.get("pr_number"):
-            pr_label = f"PR #{entry['pr_number']}"
+            pr_label = ui.pr_number(f"PR #{entry['pr_number']}")
             if entry.get("is_draft"):
-                pr_label += " (draft)"
-            detail_parts.append(pr_label)
+                pr_label += f" {ui.warning('(draft)')}"
+            line1_parts.append(pr_label)
+        if entry.get("title"):
+            line1_parts.append(entry["title"])
+        if line1_parts:
+            lines.append(f"  {connector}     {' · '.join(line1_parts)}")
 
+        # Line 2: CI status + review status + diff stat
+        line2_parts: list[str] = []
+        if entry.get("ci_rollup"):
+            line2_parts.append(ui.format_ci_status(entry["ci_rollup"]))
+        if entry.get("review_decision"):
+            review_text = ui.format_review_status(entry["review_decision"])
+            if review_text:
+                line2_parts.append(review_text)
         if entry.get("diff_stat"):
-            detail_parts.append(entry["diff_stat"])
-
-        connector = "│" if not is_last else " "
-        if detail_parts:
-            lines.append(f"  {connector}     {'  '.join(detail_parts)}")
+            line2_parts.append(ui.dim(entry["diff_stat"]))
+        if line2_parts:
+            lines.append(f"  {connector}     {' · '.join(line2_parts)}")
 
         if not is_last:
-            lines.append("  │")
+            lines.append(f"  {ui.dim('│')}")
 
     return "\n".join(lines)
 
@@ -1129,26 +1210,32 @@ def log() -> None:
 
     view_entries = []
     for entry in entries:
-        pr_number = entry.pr_number
+        pr_num = entry.pr_number
         is_draft = False
-        if pr_number:
+        title = None
+        ci_rollup: list[dict] | None = None
+        review_decision: str | None = None
+        if pr_num:
             try:
-                is_draft = github.pr_view(pr_number).get("isDraft", False)
+                pr_data = github.pr_view(
+                    pr_num, extra_fields=["reviewDecision", "statusCheckRollup"]
+                )
+                is_draft = pr_data.get("isDraft", False)
+                title = pr_data.get("title")
+                ci_rollup = pr_data.get("statusCheckRollup")
+                review_decision = pr_data.get("reviewDecision")
             except GhError:
                 pass
-
-        diff_stat = None
-        try:
-            diff_stat = git.diff_shortstat(entry.merge_base, entry.branch)
-        except GitError:
-            pass
 
         view_entries.append({
             "branch": entry.branch,
             "letter": entry.letter,
-            "pr_number": pr_number,
+            "pr_number": pr_num,
             "is_draft": is_draft,
-            "diff_stat": diff_stat,
+            "title": title,
+            "ci_rollup": ci_rollup,
+            "review_decision": review_decision,
+            "diff_stat": _get_diff_stat(entry.merge_base, entry.branch),
         })
 
     click.echo(_format_log(
@@ -1210,9 +1297,9 @@ def adopt(branches: tuple[str, ...]) -> None:
         stack.write_entry(entry)
 
         letter = stack.index_to_letter(i)
-        click.echo(f"  [{letter}] {branch} <- {merge_base}")
+        click.echo(f"  {ui.bracket_letter(letter)} {branch} {ui.dim(f'<- {merge_base}')}")
 
-    click.echo(f"\nAdopted {len(branches)} branches into stack {stack_id}")
+    click.echo(f"\n{ui.success('Adopted')} {len(branches)} branches into stack {ui.header(stack_id)}")
 
 
 # ---------------------------------------------------------------------------
@@ -1273,7 +1360,7 @@ def squash(message: str | None) -> None:
     except GitError as e:
         raise click.ClickException(str(e)) from e
 
-    click.echo(f"Squashed {len(subjects)} commits into: {commit_message}")
+    click.echo(f"{ui.success('Squashed')} {len(subjects)} commits into: {commit_message}")
 
     # Restack descendants
     entries = stack.get_stack(current.stack_id)
@@ -1320,10 +1407,10 @@ def wip(state: str | None) -> None:
 
     if new_wip:
         git.set_branch_config(current.branch, "spectrum-wip", "true")
-        click.echo(f"[{current.letter}] marked as WIP")
+        click.echo(f"{ui.bracket_letter(current.letter)} marked as {ui.warning('WIP')}")
     else:
         git.unset_branch_config(current.branch, "spectrum-wip")
-        click.echo(f"[{current.letter}] no longer WIP")
+        click.echo(f"{ui.bracket_letter(current.letter)} no longer WIP")
 
 
 # ---------------------------------------------------------------------------
@@ -1363,7 +1450,7 @@ def continue_cmd() -> None:
     except GitError as e:
         raise click.ClickException(str(e)) from e
 
-    click.echo("Rebase continued.")
+    click.echo(ui.success("Rebase continued."))
 
     # Resume rebasing remaining entries (skip the first one — it was the conflicting one)
     remaining = _rebuild_entries_from_state(op)
@@ -1388,7 +1475,7 @@ def continue_cmd() -> None:
     except GitError:
         pass
 
-    click.echo("Done.")
+    click.echo(ui.success("Done."))
 
 
 @main.command()
@@ -1410,4 +1497,4 @@ def abort() -> None:
     except GitError:
         pass
 
-    click.echo("Operation aborted.")
+    click.echo(ui.warning("Operation aborted."))

@@ -52,10 +52,11 @@ class TestLandCommand:
         mock_stack.extract_letter.return_value = None
 
         runner = CliRunner()
-        result = runner.invoke(main, ["land"])
+        result = runner.invoke(main, ["land", "-y"])
 
         assert result.exit_code == 0
-        assert "Merging PR #100" in result.output
+        assert "Merging" in result.output
+        assert "PR #100" in result.output
         mock_github.pr_merge.assert_called_once_with(100, method="squash")
         mock_stack.remove_entry.assert_called_once_with("user/msg-3391-foo/a")
         mock_stack.reindex_stack.assert_called_once_with("msg-3391")
@@ -105,7 +106,7 @@ class TestLandCommand:
         mock_stack.get_stack.return_value = [entry_a]
 
         runner = CliRunner()
-        result = runner.invoke(main, ["land"])
+        result = runner.invoke(main, ["land", "-y"])
 
         assert result.exit_code == 0
         assert "All parts landed" in result.output
@@ -125,7 +126,7 @@ class TestLandCommand:
         mock_stack.get_stack.return_value = [entry_a]
 
         runner = CliRunner()
-        result = runner.invoke(main, ["land", "--method", "merge"])
+        result = runner.invoke(main, ["land", "-y", "--method", "merge"])
 
         assert result.exit_code == 0
         mock_github.pr_merge.assert_called_once_with(100, method="merge")
@@ -146,7 +147,7 @@ class TestLandCommand:
         mock_github.pr_merge.side_effect = GhError("merge failed")
 
         runner = CliRunner()
-        result = runner.invoke(main, ["land"])
+        result = runner.invoke(main, ["land", "-y"])
 
         assert result.exit_code != 0
         assert "merge failed" in result.output
@@ -174,7 +175,7 @@ class TestLandCommand:
         mock_stack.extract_letter.return_value = None
 
         runner = CliRunner()
-        result = runner.invoke(main, ["land"])
+        result = runner.invoke(main, ["land", "-y"])
 
         assert result.exit_code == 0
         # Verify successor was retargeted to master
