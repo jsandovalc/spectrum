@@ -158,7 +158,7 @@ def reindex_stack(stack_id: str) -> None:
 
 
 def format_pr_title(stack_id: str, letter: str, message: str | None = None) -> str:
-    """Format a PR title in Canary's convention.
+    """Format a PR title from the stack ID and letter.
 
     e.g. 'MSG-3391 [a]: Preserve aggregator response kind'
     """

@@ -37,7 +37,7 @@ spectrum/
 
 **Stack state** is stored in git branch config keys (`spectrum-stack`, `spectrum-index`, `spectrum-pr`, `gh-merge-base`, `spectrum-wip`, `spectrum-title`). Operation state for `continue`/`abort` is saved to `.git/spectrum-state.json`.
 
-**Branch naming**: Linear branch names get `/a`, `/b`, `/c` appended. The ticket ID (e.g. `msg-3391`) is extracted from the branch name via regex and used as the stack identifier.
+**Branch naming**: Base branch names get `/a`, `/b`, `/c` appended. The ticket ID (e.g. `msg-3391`) is extracted from the branch name via regex and used as the stack identifier.
 
 **PR metadata** is injected into PR bodies between `<!-- SPECTRUM:START -->` and `<!-- SPECTRUM:END -->` HTML comment sentinels. Everything outside the sentinels is user content and never modified.
 

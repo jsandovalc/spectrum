@@ -1,5 +1,7 @@
 # Spectrum
 
+> **Alpha software** — APIs and commands may change without notice.
+
 Stacked PR tool for GitHub, built around `git` and `gh`.
 
 Spectrum manages branch creation, cascading rebases, and PR lifecycle for stacked diffs. PR descriptions stay intact — spectrum appends navigational metadata (stack table) using HTML comment sentinels.
@@ -12,9 +14,9 @@ Spectrum manages branch creation, cascading rebases, and PR lifecycle for stacke
 ## Install
 
 ```bash
-uv tool install git+https://github.com/canary-technologies/spectrum
+uv tool install git+https://github.com/jsandovalc/spectrum
 # or
-pipx install git+https://github.com/canary-technologies/spectrum
+pipx install git+https://github.com/jsandovalc/spectrum
 ```
 
 Both `spectrum` and `sp` are installed as entry points — use whichever you prefer.
@@ -22,7 +24,7 @@ Both `spectrum` and `sp` are installed as entry points — use whichever you pre
 For development:
 
 ```bash
-git clone https://github.com/canary-technologies/spectrum
+git clone https://github.com/jsandovalc/spectrum
 cd spectrum
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e . pytest
@@ -32,7 +34,7 @@ pip install -e . pytest
 
 ### 1. Start a stack
 
-Copy the branch name from Linear and pass it to `create`:
+Copy your branch name and pass it to `create`:
 
 ```
 $ spectrum create jonathansandoval/msg-3391-preserve-aggregator-response-kind
@@ -280,7 +282,7 @@ sp rename user/msg-3391-better-name/a   # renames local + remote
 
 ## Branch naming
 
-Spectrum appends `/a`, `/b`, `/c` to the Linear branch name:
+Spectrum appends `/a`, `/b`, `/c` to the base branch name:
 
 ```
 jonathansandoval/msg-3391-preserve-aggregator-response-kind/a

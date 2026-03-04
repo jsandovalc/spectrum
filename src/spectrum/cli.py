@@ -83,9 +83,9 @@ def main() -> None:
 @click.argument("branch_name")
 @click.option("--on", "on_branch", default=None, help="Start stack from this branch instead of master")
 def create(branch_name: str, on_branch: str | None) -> None:
-    """Start a new stack from a Linear branch name.
+    """Start a new stack from a branch name.
 
-    BRANCH_NAME is the branch name copied from Linear, e.g.
+    BRANCH_NAME is the branch name, e.g.
     jonathansandoval/msg-3391-preserve-aggregator-response-kind
     """
     stack_id = stack.extract_stack_id(branch_name)
