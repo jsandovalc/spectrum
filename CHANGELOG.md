@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-03-05
+
+### Fixed
+- `pr_edit_title` now uses `gh api` REST calls instead of `gh pr edit --title`, which was failing due to GitHub's Projects Classic deprecation
+
 ### Added
 - Colored terminal output: all CLI output uses color-coded styling (cyan for letters/PR numbers, green for success, red for errors, yellow for warnings, dim for secondary info). Centralized in `ui.py`.
 - Grouped command help: `--help` organizes commands into 6 groups (Stack, Navigate, Publish, Edit, Info, Recovery) instead of a flat list

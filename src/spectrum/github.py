@@ -99,7 +99,17 @@ def pr_view_web(branch: str) -> None:
 
 def pr_edit_title(pr_number: int, title: str) -> None:
     """Update a PR's title."""
-    _run_gh(["pr", "edit", str(pr_number), "--title", title])
+    payload = json.dumps({"title": title})
+    try:
+        subprocess.run(
+            ["gh", "api", f"repos/{{owner}}/{{repo}}/pulls/{pr_number}",
+             "--method", "PATCH", "--input", "-"],
+            input=payload, check=True, capture_output=True, text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise GhError(f"gh api PATCH pulls/{pr_number} failed: {e.stderr.strip()}") from e
+    except FileNotFoundError:
+        raise GhError("'gh' CLI not found. Install it: https://cli.github.com") from None
 
 
 def pr_merge(pr_number: int, *, method: str = "squash") -> None:

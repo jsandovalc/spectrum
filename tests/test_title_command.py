@@ -8,13 +8,16 @@ from spectrum.stack import StackEntry
 
 
 class TestPrEditTitle:
-    @patch("spectrum.github._run_gh", autospec=True)
-    def test_calls_gh_pr_edit_title(self, mock_run_gh):
+    @patch("subprocess.run", autospec=True)
+    def test_calls_gh_api_patch(self, mock_run):
         from spectrum.github import pr_edit_title
 
         pr_edit_title(100, "New Title")
-        mock_run_gh.assert_called_once_with(
-            ["pr", "edit", "100", "--title", "New Title"]
+        mock_run.assert_called_once_with(
+            ["gh", "api", "repos/{owner}/{repo}/pulls/100",
+             "--method", "PATCH", "--input", "-"],
+            input='{"title": "New Title"}',
+            check=True, capture_output=True, text=True,
         )
 
 
