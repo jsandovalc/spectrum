@@ -47,6 +47,21 @@ class TestAliasGroup:
         assert result.exit_code != 0
         assert "Not on a spectrum branch" in result.output
 
+    @patch("spectrum.cli.stack", autospec=True)
+    def test_git_error_produces_clean_error(self, mock_stack):
+        mock_stack.current_stack.side_effect = GitError(
+            "git rev-parse --abbrev-ref HEAD failed: fatal: not a git repository"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["status"])
+
+        assert result.exit_code != 0
+        assert "Error:" in result.output
+        assert "not a git repository" in result.output
+        # Should not contain a Python traceback
+        assert "Traceback" not in result.output
+
 
 @patch("spectrum.cli.git")
 @patch("spectrum.cli.stack")

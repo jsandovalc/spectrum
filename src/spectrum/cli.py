@@ -38,6 +38,12 @@ class AliasGroup(click.Group):
             result.setdefault(command, []).append(alias)
         return result
 
+    def invoke(self, ctx: click.Context) -> None:
+        try:
+            return super().invoke(ctx)
+        except (GitError, GhError) as e:
+            raise click.ClickException(str(e)) from e
+
     def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         return super().get_command(ctx, self.ALIASES.get(cmd_name, cmd_name))
 
@@ -103,10 +109,7 @@ def create(branch_name: str, on_branch: str | None) -> None:
         raise click.ClickException(f"Branch {on_branch} does not exist")
 
     click.echo("Fetching latest master...")
-    try:
-        git.fetch("origin", "master")
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.fetch("origin", "master")
 
     if on_branch is not None:
         start_point = on_branch
@@ -115,10 +118,7 @@ def create(branch_name: str, on_branch: str | None) -> None:
         start_point = "origin/master"
         merge_base = "master"
 
-    try:
-        git.create_branch(first_branch, start_point)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.create_branch(first_branch, start_point)
 
     entry = stack.StackEntry(
         branch=first_branch,
@@ -161,10 +161,7 @@ def add() -> None:
 
     last_entry = max(full_stack, key=lambda e: e.index)
 
-    try:
-        git.create_branch(new_branch, last_entry.branch)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.create_branch(new_branch, last_entry.branch)
 
     new_entry = stack.StackEntry(
         branch=new_branch,
@@ -279,10 +276,7 @@ def switch(part: str) -> None:
             f"Part [{part}] not found in stack. Available: {available}"
         )
 
-    try:
-        git.checkout(target.branch)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.checkout(target.branch)
 
     click.echo(f"Switched to {ui.bracket_letter(part)} {target.branch}")
     _show_diff_stat(target)
@@ -307,10 +301,7 @@ def next_cmd() -> None:
     if target is None:
         raise click.ClickException("Already on the last part.")
 
-    try:
-        git.checkout(target.branch)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.checkout(target.branch)
 
     click.echo(f"Switched to {ui.bracket_letter(target.letter)} {target.branch}")
     _show_diff_stat(target)
@@ -330,10 +321,7 @@ def prev() -> None:
     if target is None:
         raise click.ClickException("Already on the first part.")
 
-    try:
-        git.checkout(target.branch)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.checkout(target.branch)
 
     click.echo(f"Switched to {ui.bracket_letter(target.letter)} {target.branch}")
     _show_diff_stat(target)
@@ -357,10 +345,7 @@ def top() -> None:
     target = entries[-1]
     if target.index == current.index:
         raise click.ClickException("Already on the last part.")
-    try:
-        git.checkout(target.branch)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.checkout(target.branch)
     click.echo(f"Switched to {ui.bracket_letter(target.letter)} {target.branch}")
     _show_diff_stat(target)
 
@@ -378,10 +363,7 @@ def bottom() -> None:
     target = entries[0]
     if target.index == current.index:
         raise click.ClickException("Already on the first part.")
-    try:
-        git.checkout(target.branch)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.checkout(target.branch)
     click.echo(f"Switched to {ui.bracket_letter(target.letter)} {target.branch}")
     _show_diff_stat(target)
 
@@ -469,19 +451,13 @@ def submit(draft: bool, reviewer: str | None) -> None:
     branches = [e.branch for e in active_entries]
     if branches:
         click.echo(f"Pushing {len(branches)} branch{'es' if len(branches) != 1 else ''}...")
-        try:
-            git.push_force_with_lease(branches)
-        except GitError as e:
-            raise click.ClickException(str(e)) from e
+        git.push_force_with_lease(branches)
         for b in branches:
             click.echo(f"  {b} -> origin {ui.success('(pushed)')}")
 
     click.echo()
 
-    try:
-        repo_url = github.get_repo_url()
-    except GhError as e:
-        raise click.ClickException(str(e)) from e
+    repo_url = github.get_repo_url()
 
     pr_template = github.read_pr_template() or ""
 
@@ -570,10 +546,7 @@ def pr() -> None:
             f"No PR found for [{current.letter}]. Run 'spectrum submit' first."
         )
     click.echo(f"Opening {ui.pr_number(f'PR #{current.pr_number}')} for {ui.bracket_letter(current.letter)}...")
-    try:
-        github.pr_view_web(current.branch)
-    except GhError as e:
-        raise click.ClickException(str(e)) from e
+    github.pr_view_web(current.branch)
 
 
 # ---------------------------------------------------------------------------
@@ -595,10 +568,7 @@ def title(title: str) -> None:
     formatted = stack.format_pr_title(current.stack_id, current.letter, title)
 
     if current.pr_number is not None:
-        try:
-            github.pr_edit_title(current.pr_number, formatted)
-        except GhError as e:
-            raise click.ClickException(str(e)) from e
+        github.pr_edit_title(current.pr_number, formatted)
         click.echo(f"{ui.success('Updated')} {ui.pr_number(f'PR #{current.pr_number}')} title: {formatted}")
     else:
         click.echo(f"{ui.success('Title saved.')} Will be used on next submit.")
@@ -640,10 +610,7 @@ def land(method: str, yes: bool) -> None:
         )
 
     click.echo(f"Merging {ui.pr_number(f'PR #{target.pr_number}')} {ui.bracket_letter(target.letter)} via {method}...")
-    try:
-        github.pr_merge(target.pr_number, method=method)
-    except GhError as e:
-        raise click.ClickException(str(e)) from e
+    github.pr_merge(target.pr_number, method=method)
 
     # Retarget successor
     successor = next((e for e in entries if e.merge_base == target.branch), None)
@@ -661,10 +628,7 @@ def land(method: str, yes: bool) -> None:
 
     # Fetch and rebase remaining
     click.echo("Fetching origin/master...")
-    try:
-        git.fetch("origin", "master")
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.fetch("origin", "master")
 
     _rebase_entries(
         remaining,
@@ -742,8 +706,6 @@ def _rebase_entries(
                 "  spectrum abort"
             )
             return rebased
-        except GitError as e:
-            raise click.ClickException(str(e)) from e
     return rebased
 
 
@@ -816,10 +778,7 @@ def sync(no_push: bool) -> None:
     original_branch = git.current_branch()
 
     click.echo("Fetching origin/master...")
-    try:
-        git.fetch("origin", "master")
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.fetch("origin", "master")
 
     # Check if any earlier parts have been merged
     merged_indices: set[int] = set()
@@ -891,10 +850,7 @@ def sync(no_push: bool) -> None:
         return
 
     click.echo()
-    try:
-        git.push_force_with_lease(branches_to_push)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.push_force_with_lease(branches_to_push)
     click.echo(ui.success("Pushed."))
 
     # Update PR metadata
@@ -961,10 +917,7 @@ def drop(part: str | None, yes: bool) -> None:
         next_entry = next((e for e in remaining if e.index > target.index), None)
         checkout_target = prev_entry or next_entry
         if checkout_target and target.branch == current.branch:
-            try:
-                git.checkout(checkout_target.branch)
-            except GitError as e:
-                raise click.ClickException(str(e)) from e
+            git.checkout(checkout_target.branch)
 
     click.echo(f"{ui.success('Dropped')} {ui.bracket_letter(target.letter)} {target.branch}")
 
@@ -988,10 +941,7 @@ def rename(new_name: str) -> None:
     if git.branch_exists(new_name):
         raise click.ClickException(f"Branch {new_name} already exists")
 
-    try:
-        git.rename_branch(old_name, new_name)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.rename_branch(old_name, new_name)
 
     # Update children's merge_base that pointed to old name
     entries = stack.get_stack(current.stack_id)
@@ -1000,10 +950,7 @@ def rename(new_name: str) -> None:
             git.set_branch_config(entry.branch, "gh-merge-base", new_name)
 
     # Push new name and delete old remote
-    try:
-        git.push_force_with_lease([new_name])
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.push_force_with_lease([new_name])
 
     try:
         git.delete_remote_branch(old_name)
@@ -1044,11 +991,8 @@ def fold(yes: bool) -> None:
         click.confirm(f"Fold [{current.letter}] into [{parent.letter}]?", abort=True)
 
     # Checkout parent and merge
-    try:
-        git.checkout(parent.branch)
-        git.merge_ff_only(current.branch)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.checkout(parent.branch)
+    git.merge_ff_only(current.branch)
 
     # Retarget children of current to parent
     for entry in entries:
@@ -1127,8 +1071,6 @@ def move(onto: str) -> None:
             "  git rebase --continue"
         )
         return
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
 
     # Reindex
     stack.reindex_stack(current.stack_id)
@@ -1354,11 +1296,8 @@ def squash(message: str | None) -> None:
 
     commit_message = message or subjects[0]
 
-    try:
-        git.reset_soft(current.merge_base)
-        git.commit(commit_message)
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.reset_soft(current.merge_base)
+    git.commit(commit_message)
 
     click.echo(f"{ui.success('Squashed')} {len(subjects)} commits into: {commit_message}")
 
@@ -1447,8 +1386,6 @@ def continue_cmd() -> None:
             "  git add <files>\n"
             "  spectrum continue"
         ) from None
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
 
     click.echo(ui.success("Rebase continued."))
 
@@ -1485,10 +1422,7 @@ def abort() -> None:
     if op is None:
         raise click.ClickException("No operation in progress.")
 
-    try:
-        git.rebase_abort()
-    except GitError as e:
-        raise click.ClickException(str(e)) from e
+    git.rebase_abort()
 
     OperationState.clear()
 

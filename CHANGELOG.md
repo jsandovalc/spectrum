@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-06
+
+### Added
+- Logo in README
+
+### Fixed
+- Running `sp` commands outside a git repository now shows a clean error message instead of a traceback
+
 ## [0.1.1] - 2026-03-05
 
 ### Fixed

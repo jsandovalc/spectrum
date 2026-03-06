@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="spectrum_logo.png" alt="Spectrum" width="200">
+</p>
+
 # Spectrum
 
 > **Alpha software** — APIs and commands may change without notice.
