@@ -134,9 +134,9 @@ class TestSubmitSkipsWip:
         assert result.exit_code == 0
         assert "Skipping [b] (WIP)" in result.output
         # Only entry_a's branch should be pushed
-        mock_git.push_force_with_lease.assert_called_once_with(
-            ["user/msg-3391-foo/a"]
-        )
+        args, kwargs = mock_git.push_force_with_lease.call_args
+        assert args == (["user/msg-3391-foo/a"],)
+        assert "on_retry" in kwargs
         # PR should not be created for WIP entry
         mock_github.pr_create.assert_not_called()
 

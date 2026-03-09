@@ -47,9 +47,9 @@ class TestRenameCommand:
         mock_git.rename_branch.assert_called_once_with(
             "user/msg-3391-foo/a", "user/msg-3391-bar/a"
         )
-        mock_git.push_force_with_lease.assert_called_once_with(
-            ["user/msg-3391-bar/a"]
-        )
+        args, kwargs = mock_git.push_force_with_lease.call_args
+        assert args == (["user/msg-3391-bar/a"],)
+        assert "on_retry" in kwargs
         mock_git.delete_remote_branch.assert_called_once_with("user/msg-3391-foo/a")
 
     @patch("spectrum.cli.stack", autospec=True)

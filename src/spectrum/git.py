@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Callable
 
 
 class GitError(Exception):
@@ -64,9 +65,22 @@ def checkout(branch: str) -> None:
     _run(["checkout", branch])
 
 
-def push_force_with_lease(branches: list[str], remote: str = "origin") -> None:
+def push_force_with_lease(
+    branches: list[str],
+    remote: str = "origin",
+    on_retry: Callable[[str], None] | None = None,
+) -> None:
     for branch in branches:
-        _run(["push", "--force-with-lease", remote, branch])
+        try:
+            _run(["push", "--force-with-lease", remote, branch])
+        except GitError as e:
+            if "rejected" in str(e) or "stale info" in str(e):
+                if on_retry:
+                    on_retry(branch)
+                _run(["fetch", remote, branch])
+                _run(["push", "--force-with-lease", remote, branch])
+            else:
+                raise
 
 
 def rebase_onto(branch: str, onto: str, old_base: str) -> None:

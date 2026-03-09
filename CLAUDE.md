@@ -59,6 +59,11 @@ pytest -v
 
 Tests mock `git` and `github` modules. CLI tests use Click's `CliRunner`. No real git repos or network calls in the test suite.
 
+## Error handling conventions
+
+- **Auto-recover when possible**: Handle recoverable subprocess errors automatically with user-visible feedback. For example, `push_force_with_lease` auto-retries on "stale info" / "rejected" errors by fetching and retrying, and accepts an `on_retry` callback for user feedback.
+- **Errors should be useful, following the spirit of Rust**: Error messages must tell the user *what* went wrong, *why*, and *what to do about it*. Include context (branch name, command that failed, relevant state). Prefer actionable messages like `"Rebase conflict on branch foo/a onto master. Resolve conflicts, then run: sp continue"` over generic ones like `"Rebase failed"`. When wrapping subprocess errors, preserve the underlying stderr but add Spectrum-level context.
+
 ## Common tasks
 
 ### Adding a new command

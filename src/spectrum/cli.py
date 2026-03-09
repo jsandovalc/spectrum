@@ -80,6 +80,10 @@ def main() -> None:
     """Spectrum — stacked PR tool for GitHub."""
 
 
+def _push_retry_message(branch: str) -> None:
+    click.echo(f"  Push rejected for {branch} (stale ref), fetching and retrying...")
+
+
 # ---------------------------------------------------------------------------
 # create
 # ---------------------------------------------------------------------------
@@ -451,7 +455,10 @@ def submit(draft: bool, reviewer: str | None) -> None:
     branches = [e.branch for e in active_entries]
     if branches:
         click.echo(f"Pushing {len(branches)} branch{'es' if len(branches) != 1 else ''}...")
-        git.push_force_with_lease(branches)
+        git.push_force_with_lease(
+            branches,
+            on_retry=_push_retry_message,
+        )
         for b in branches:
             click.echo(f"  {b} -> origin {ui.success('(pushed)')}")
 
@@ -850,7 +857,12 @@ def sync(no_push: bool) -> None:
         return
 
     click.echo()
-    git.push_force_with_lease(branches_to_push)
+    git.push_force_with_lease(
+        branches_to_push,
+        on_retry=lambda b: click.echo(
+            f"  Push rejected for {b} (stale ref), fetching and retrying..."
+        ),
+    )
     click.echo(ui.success("Pushed."))
 
     # Update PR metadata
@@ -950,7 +962,12 @@ def rename(new_name: str) -> None:
             git.set_branch_config(entry.branch, "gh-merge-base", new_name)
 
     # Push new name and delete old remote
-    git.push_force_with_lease([new_name])
+    git.push_force_with_lease(
+        [new_name],
+        on_retry=lambda b: click.echo(
+            f"  Push rejected for {b} (stale ref), fetching and retrying..."
+        ),
+    )
 
     try:
         git.delete_remote_branch(old_name)

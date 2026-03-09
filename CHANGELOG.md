@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-09
+
+### Fixed
+- `git push --force-with-lease` "stale info" rejections are now auto-retried: Spectrum fetches the stale branch and retries the push, instead of erroring out
+
 ## [0.2.0] - 2026-03-06
 
 ### Added
