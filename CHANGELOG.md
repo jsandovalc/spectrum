@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-03-09
+
+### Improved
+- Rebase conflict messages now show the actual conflicting filenames instead of generic `<files>` placeholder, saving a manual `git status` step
+
 ## [0.2.1] - 2026-03-09
 
 ### Fixed

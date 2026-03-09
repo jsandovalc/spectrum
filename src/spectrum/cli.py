@@ -658,6 +658,14 @@ def land(method: str, yes: bool) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _format_conflict_files(files: list[str]) -> str:
+    """Format conflict file list for user display."""
+    if not files:
+        return "  git add <files>\n"
+    lines = "\n".join(f"    {f}" for f in files)
+    return f"  Conflicting files:\n{lines}\n\n  git add <files>\n"
+
+
 def _rebase_entries(
     entries: list[stack.StackEntry],
     *,
@@ -687,7 +695,7 @@ def _rebase_entries(
             git.rebase_onto(entry.branch, onto, old_base)
             click.echo(ui.success("done"))
             rebased.append(entry.branch)
-        except RebaseConflictError:
+        except RebaseConflictError as exc:
             click.echo(ui.error("CONFLICT"))
             # Save state for continue/abort
             remaining = entries[i:]
@@ -704,10 +712,11 @@ def _rebase_entries(
                 resolve_onto_master=uses_origin_master,
             )
             op_state.save()
+            files_section = _format_conflict_files(exc.files)
             click.echo(
                 f"\n{ui.error('Conflict')} rebasing {ui.bracket_letter(entry.letter)} onto {onto}. "
-                "Resolve conflicts, then:\n"
-                "  git add <files>\n"
+                f"Resolve conflicts, then:\n"
+                f"{files_section}"
                 "  spectrum continue\n"
                 "\nOr abort with:\n"
                 "  spectrum abort"
@@ -1080,11 +1089,12 @@ def move(onto: str) -> None:
     # Rebase current onto new parent
     try:
         git.rebase_onto(current.branch, target.branch, old_merge_base)
-    except RebaseConflictError:
+    except RebaseConflictError as exc:
+        files_section = _format_conflict_files(exc.files)
         click.echo(
             f"\n{ui.error('Conflict')} rebasing {ui.bracket_letter(current.letter)} onto {ui.bracket_letter(onto)}. "
-            "Resolve conflicts, then:\n"
-            "  git add <files>\n"
+            f"Resolve conflicts, then:\n"
+            f"{files_section}"
             "  git rebase --continue"
         )
         return
@@ -1397,10 +1407,11 @@ def continue_cmd() -> None:
     # Continue the interrupted rebase
     try:
         git.rebase_continue()
-    except RebaseConflictError:
+    except RebaseConflictError as exc:
+        files_section = _format_conflict_files(exc.files)
         raise click.ClickException(
             "Rebase still has conflicts. Resolve them first:\n"
-            "  git add <files>\n"
+            f"{files_section}"
             "  spectrum continue"
         ) from None
 

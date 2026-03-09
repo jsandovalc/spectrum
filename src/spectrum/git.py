@@ -12,9 +12,10 @@ class GitError(Exception):
 
 
 class RebaseConflictError(GitError):
-    def __init__(self, branch: str, onto: str) -> None:
+    def __init__(self, branch: str, onto: str, files: list[str] | None = None) -> None:
         self.branch = branch
         self.onto = onto
+        self.files = files or []
         super().__init__(f"Conflict rebasing {branch} onto {onto}")
 
 
@@ -83,6 +84,16 @@ def push_force_with_lease(
                 raise
 
 
+def conflict_files() -> list[str]:
+    """Return filenames with UU or AA status (unmerged paths)."""
+    status = _run(["status", "--porcelain"], check=False)
+    files = []
+    for line in (status.stdout or "").splitlines():
+        if line[:2] in ("UU", "AA"):
+            files.append(line[3:])
+    return files
+
+
 def rebase_onto(branch: str, onto: str, old_base: str) -> None:
     """Rebase branch onto a new base, transplanting commits from old_base.
 
@@ -94,9 +105,9 @@ def rebase_onto(branch: str, onto: str, old_base: str) -> None:
     )
     if result.returncode != 0:
         # Check if it's a conflict
-        status = _run(["status", "--porcelain"], check=False)
-        if "UU " in (status.stdout or "") or "AA " in (status.stdout or ""):
-            raise RebaseConflictError(branch, onto)
+        files = conflict_files()
+        if files:
+            raise RebaseConflictError(branch, onto, files)
         raise GitError(f"Rebase failed: {result.stderr.strip()}")
 
 
@@ -229,7 +240,7 @@ def rebase_continue() -> None:
     """Continue an in-progress rebase."""
     result = _run(["rebase", "--continue"], check=False)
     if result.returncode != 0:
-        raise RebaseConflictError("unknown", "unknown")
+        raise RebaseConflictError("unknown", "unknown", conflict_files())
 
 
 def rebase_abort() -> None:
