@@ -1,5 +1,7 @@
+import subprocess
 from unittest.mock import patch, call
 
+import pytest
 from click.testing import CliRunner
 
 from spectrum.cli import main, _get_title, _build_stack_table_entries, _is_cross_stack_base_merged, AliasGroup
@@ -633,6 +635,35 @@ class TestSyncCommand:
         assert mock_git.rebase_onto.call_args_list[0] == call(
             "user/msg-1/b", "user/msg-1/a", "merge-base-sha"
         )
+
+    def test_sync_uses_merged_parent_tip_as_old_base(self, mock_stack, mock_git, mock_github):
+        """When parent [a] is squash-merged, rebase of [b] uses [a]'s tip as old_base."""
+        entries = [
+            StackEntry(branch="user/msg-1/a", index=0, stack_id="msg-1", merge_base="master", pr_number=10),
+            StackEntry(branch="user/msg-1/b", index=1, stack_id="msg-1", merge_base="user/msg-1/a"),
+        ]
+        current = entries[1]  # on [b]
+        mock_stack.current_entry.return_value = current
+        mock_stack.get_stack.return_value = entries
+        mock_git.current_branch.return_value = "user/msg-1/b"
+        mock_github.pr_view.return_value = {"state": "MERGED"}
+        mock_git.branch_exists.return_value = True
+        mock_git.rev_parse.side_effect = lambda ref: {
+            "user/msg-1/a": "tip-of-a-sha",
+            "user/msg-1/b": "tip-of-b-sha",
+        }[ref]
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["sync"])
+
+        assert result.exit_code == 0, result.output
+        # [b] should be rebased using [a]'s tip as old_base (not merge-base)
+        assert mock_git.rebase_onto.call_args_list[0] == call(
+            "user/msg-1/b", "origin/master", "tip-of-a-sha"
+        )
+        # merge_base / merge_base_fork_point should NOT be called for [b]
+        mock_git.merge_base.assert_not_called()
+        mock_git.merge_base_fork_point.assert_not_called()
 
 
 @patch("spectrum.cli.git")
@@ -1357,6 +1388,47 @@ class TestSyncCrossStack:
         assert result.exit_code == 0
         assert "retargeted to master" not in result.output
 
+    def test_cross_stack_merged_uses_dependency_tip_as_old_base(self, mock_stack, mock_git, mock_github):
+        """When cross-stack dependency is merged and branch exists, its tip is used as old_base."""
+        entries = [
+            StackEntry(
+                branch="user/msg-2/a",
+                index=0,
+                stack_id="msg-2",
+                merge_base="user/msg-1/c",
+                pr_number=50,
+            ),
+        ]
+        mock_stack.current_entry.return_value = entries[0]
+        mock_stack.get_stack.return_value = entries
+        mock_git.current_branch.return_value = "user/msg-2/a"
+        # No same-stack merges
+        mock_github.pr_view.side_effect = lambda pr: (
+            {"state": "OPEN"} if pr == 50 else {"state": "MERGED"}
+        )
+        # Cross-stack check: dependency is merged
+        cross_entry = StackEntry(
+            branch="user/msg-1/c", index=2, stack_id="msg-1",
+            merge_base="user/msg-1/b", pr_number=99,
+        )
+        mock_stack.read_entry.return_value = cross_entry
+        mock_git.branch_exists.return_value = True
+        mock_git.rev_parse.side_effect = lambda ref: {
+            "user/msg-1/c": "tip-of-cross-dep-sha",
+            "user/msg-2/a": "tip-of-a-sha",
+        }[ref]
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["sync"])
+
+        assert result.exit_code == 0, result.output
+        # Should use the cross-stack dependency's tip as old_base
+        assert mock_git.rebase_onto.call_args_list[0] == call(
+            "user/msg-2/a", "origin/master", "tip-of-cross-dep-sha"
+        )
+        mock_git.merge_base.assert_not_called()
+        mock_git.merge_base_fork_point.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Command grouping tests
@@ -1470,6 +1542,35 @@ class TestLandConfirmation:
         assert result.exit_code != 0
         assert "Aborted" in result.output
         mock_github.pr_merge.assert_not_called()
+
+    def test_land_uses_landed_branch_tip_as_old_base(self, mock_stack, mock_github, mock_git):
+        """After landing [a], rebase of [b] uses [a]'s tip as old_base."""
+        entry_a = StackEntry(
+            branch="user/msg-1/a", index=0, stack_id="msg-1",
+            merge_base="master", pr_number=100,
+        )
+        entry_b = StackEntry(
+            branch="user/msg-1/b", index=1, stack_id="msg-1",
+            merge_base="user/msg-1/a",
+        )
+        mock_stack.current_entry.return_value = entry_a
+        mock_stack.get_stack.return_value = [entry_a, entry_b]
+        mock_git.rev_parse.side_effect = lambda ref: {
+            "user/msg-1/a": "tip-of-a-sha",
+            "user/msg-1/b": "tip-of-b-sha",
+        }[ref]
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["land", "-y"])
+
+        assert result.exit_code == 0, result.output
+        # [b] should be rebased using [a]'s tip as old_base
+        assert mock_git.rebase_onto.call_args_list[0] == call(
+            "user/msg-1/b", "origin/master", "tip-of-a-sha"
+        )
+        # merge_base / merge_base_fork_point should NOT be called
+        mock_git.merge_base.assert_not_called()
+        mock_git.merge_base_fork_point.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1596,3 +1697,53 @@ class TestNavigationDiffStats:
 
         assert result.exit_code == 0
         assert "+20 -5, 3 files" in result.output
+
+
+class TestDetachedHeadError:
+    @patch("spectrum.stack.git.current_branch", side_effect=GitError(
+        "Not on a branch (detached HEAD). "
+        "A rebase is in progress — resolve conflicts then run: sp continue\n"
+        "Or abort with: sp abort"
+    ))
+    def test_detached_head_during_rebase_suggests_continue(self, mock_cb):
+        runner = CliRunner()
+        result = runner.invoke(main, ["status"])
+
+        assert result.exit_code != 0
+        assert "sp continue" in result.output
+        assert "sp abort" in result.output
+
+    @patch("spectrum.stack.git.current_branch", side_effect=GitError(
+        "Not on a branch (detached HEAD). "
+        "Check out a spectrum branch with: sp switch"
+    ))
+    def test_detached_head_without_rebase_suggests_switch(self, mock_cb):
+        runner = CliRunner()
+        result = runner.invoke(main, ["status"])
+
+        assert result.exit_code != 0
+        assert "sp switch" in result.output
+
+    @patch("spectrum.git.os.path.isdir", return_value=False)
+    @patch("spectrum.git._run")
+    def test_current_branch_detached_no_rebase(self, mock_run, mock_isdir):
+        from spectrum.git import current_branch
+
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="HEAD\n", stderr=""
+        )
+
+        with pytest.raises(GitError, match="sp switch"):
+            current_branch()
+
+    @patch("spectrum.git.os.path.isdir", side_effect=lambda p: "rebase-merge" in p)
+    @patch("spectrum.git._run")
+    def test_current_branch_detached_with_rebase(self, mock_run, mock_isdir):
+        from spectrum.git import current_branch
+
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="HEAD\n", stderr=""
+        )
+
+        with pytest.raises(GitError, match="sp continue"):
+            current_branch()

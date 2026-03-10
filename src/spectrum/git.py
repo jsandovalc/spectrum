@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from collections.abc import Callable
@@ -36,11 +37,31 @@ def _run(
         raise GitError(f"git {' '.join(args)} failed: {e.stderr.strip()}") from e
 
 
+def _rebase_in_progress() -> bool:
+    """Check if a rebase is in progress by looking for rebase state directories."""
+    result = _run(["rev-parse", "--git-dir"], check=False)
+    if result.returncode != 0:
+        return False
+    git_dir_path = result.stdout.strip()
+    return os.path.isdir(os.path.join(git_dir_path, "rebase-merge")) or os.path.isdir(
+        os.path.join(git_dir_path, "rebase-apply")
+    )
+
+
 def current_branch() -> str:
     result = _run(["rev-parse", "--abbrev-ref", "HEAD"])
     branch = result.stdout.strip()
     if branch == "HEAD":
-        raise GitError("Not on a branch (detached HEAD)")
+        if _rebase_in_progress():
+            raise GitError(
+                "Not on a branch (detached HEAD). "
+                "A rebase is in progress — resolve conflicts then run: sp continue\n"
+                "Or abort with: sp abort"
+            )
+        raise GitError(
+            "Not on a branch (detached HEAD). "
+            "Check out a spectrum branch with: sp switch"
+        )
     return branch
 
 

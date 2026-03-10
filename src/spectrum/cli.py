@@ -620,8 +620,10 @@ def land(method: str, yes: bool) -> None:
     github.pr_merge(target.pr_number, method=method)
 
     # Retarget successor
+    old_base_overrides: dict[str, str] = {}
     successor = next((e for e in entries if e.merge_base == target.branch), None)
     if successor is not None:
+        old_base_overrides[successor.branch] = git.rev_parse(target.branch)
         _retarget_to_master(successor, reason="landed")
 
     # Clean up
@@ -642,6 +644,7 @@ def land(method: str, yes: bool) -> None:
         resolve_onto=lambda mb: "origin/master" if mb == "master" else mb,
         resume_command="spectrum sync",
         original_branch=remaining[0].branch,
+        old_base_overrides=old_base_overrides,
     )
 
     # Checkout the new bottom
@@ -672,6 +675,7 @@ def _rebase_entries(
     resolve_onto: Callable[[str], str] | None = None,
     resume_command: str,
     original_branch: str | None = None,
+    old_base_overrides: dict[str, str] | None = None,
 ) -> list[str]:
     """Rebase stack entries in order. Returns list of rebased branch names.
 
@@ -684,7 +688,9 @@ def _rebase_entries(
         onto = resolve_onto(entry.merge_base) if resolve_onto else entry.merge_base
         click.echo(f"Rebasing {ui.bracket_letter(entry.letter)} onto {onto}... ", nl=False)
         try:
-            if entry.merge_base in pre_rebase_tip:
+            if old_base_overrides and entry.branch in old_base_overrides:
+                old_base = old_base_overrides[entry.branch]
+            elif entry.merge_base in pre_rebase_tip:
                 old_base = pre_rebase_tip[entry.merge_base]
             else:
                 old_base = (
@@ -810,6 +816,7 @@ def sync(no_push: bool) -> None:
             pass
 
     # Handle merged entries: retarget the next entry to master
+    old_base_overrides: dict[str, str] = {}
     if merged_indices:
         for entry in entries:
             if entry.index in merged_indices:
@@ -819,6 +826,8 @@ def sync(no_push: bool) -> None:
                 (e for e in entries if e.branch == entry.merge_base), None
             )
             if parent_entry and parent_entry.index in merged_indices:
+                if git.branch_exists(parent_entry.branch):
+                    old_base_overrides[entry.branch] = git.rev_parse(parent_entry.branch)
                 _retarget_to_master(entry)
 
         # Clean up merged entries
@@ -837,6 +846,8 @@ def sync(no_push: bool) -> None:
     for entry in entries:
         old_base = entry.merge_base
         if _is_cross_stack_base_merged(old_base, entries):
+            if git.branch_exists(old_base):
+                old_base_overrides[entry.branch] = git.rev_parse(old_base)
             _retarget_to_master(entry, reason=f"dependency {old_base} merged")
 
     # Rebase scope: from current position onward
@@ -847,6 +858,7 @@ def sync(no_push: bool) -> None:
         resolve_onto=lambda mb: "origin/master" if mb == "master" else mb,
         resume_command="spectrum sync",
         original_branch=original_branch,
+        old_base_overrides=old_base_overrides,
     )
     if len(branches_to_push) < len(to_rebase):
         return

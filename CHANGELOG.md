@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-03-10
+
+### Fixed
+- `sync` and `land` no longer duplicate parent commits in child branches after a squash-merge. When a parent branch is squash-merged, rebasing now uses the parent's tip SHA as the rebase boundary instead of the merge-base ancestor, so only the child's unique commits are transplanted.
+
 ## [0.2.2] - 2026-03-09
 
 ### Improved
