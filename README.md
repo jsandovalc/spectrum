@@ -147,9 +147,9 @@ Commands are organized into groups in `--help`:
 **Stack:** `create`, `add`, `drop`, `adopt`
 **Navigate:** `switch` (`sw`), `next`, `prev`, `top`, `bottom`
 **Publish:** `submit`, `pr` (`o`), `title`, `land`, `wip`
-**Edit:** `sync`, `restack`, `squash`, `fold`, `move`, `rename`
+**Edit:** `sync`, `restack`, `squash`, `fold`, `move`, `rename`, `reorder`, `split`, `absorb`
 **Info:** `status` (`st`), `log` (`lg`)
-**Recovery:** `continue`, `abort`
+**Recovery:** `continue`, `abort`, `undo`
 
 | Command | Description |
 |---------|-------------|
@@ -173,9 +173,13 @@ Commands are organized into groups in `--help`:
 | `sp fold [-y]` | Merge the current branch into its parent |
 | `sp move --onto <letter>` | Move the current branch to be a child of another branch |
 | `sp rename <new-name>` | Rename the current branch (local + remote) |
+| `sp reorder <letter1> <letter2> [-y]` | Swap two branches in the stack |
+| `sp split [--at N]` | Split the current branch into two at a commit boundary |
+| `sp absorb [-y]` | Distribute staged changes to the correct branches |
 | `sp wip [on\|off]` | Toggle WIP status (WIP branches are skipped during submit) |
 | `sp continue` | Resume a rebase after resolving conflicts |
 | `sp abort` | Abort a rebase in progress |
+| `sp undo [-y]` | Undo the last destructive spectrum command |
 
 ## Common flows
 
@@ -284,6 +288,41 @@ sp submit              # WIP branches are skipped
 sp rename user/msg-3391-better-name/a   # renames local + remote
 ```
 
+### Split a branch
+
+When a branch has too many commits and you want to break it into two PRs:
+
+```
+sp split --at 2    # keep first 2 commits, move the rest to a new branch
+```
+
+Without `--at`, shows an interactive commit list to pick the split point.
+
+### Absorb changes into the right branch
+
+When you have staged changes that belong to different branches in the stack:
+
+```
+git add -p          # stage your changes
+sp absorb           # each file goes to the branch that last modified it
+sp restack          # propagate changes
+```
+
+### Reorder branches
+
+```
+sp reorder a b      # swap [a] and [b] in the stack
+```
+
+### Undo a mistake
+
+Every destructive command (`fold`, `drop`, `squash`, `move`, `reorder`, `restack`, `sync`, `land`, `split`, `absorb`) saves a snapshot first:
+
+```
+sp fold              # oops, didn't mean to fold
+sp undo              # restores all branches to pre-fold state
+```
+
 ## Branch naming
 
 Spectrum appends `/a`, `/b`, `/c` to the base branch name:
@@ -314,7 +353,7 @@ Stack state lives in git branch config (local `.git/config`):
 - `spectrum-wip` — `true` if branch is marked as WIP (skipped during submit)
 - `spectrum-title` — custom PR title (used by submit and title commands)
 
-Operation state (for `continue`/`abort`) is saved to `.git/spectrum-state.json` during rebase conflicts.
+Operation state (for `continue`/`abort`) is saved to `.git/spectrum-state.json` during rebase conflicts. Undo snapshots are saved to `.git/spectrum-undo.json` before destructive commands.
 
 No extra files or directories. State survives rebases.
 
@@ -339,7 +378,8 @@ Color respects `NO_COLOR` environment variable.
 ## Safety
 
 - All pushes use `--force-with-lease`
-- Destructive commands (`drop`, `fold`, `land`) prompt for confirmation; use `-y` to skip
+- Destructive commands (`drop`, `fold`, `land`, `reorder`) prompt for confirmation; use `-y` to skip
+- `sp undo` restores branches to their state before the last destructive command
 - Rebase conflicts save state and can be resumed with `spectrum continue` or cancelled with `spectrum abort`
 - PR body edits only touch the `<!-- SPECTRUM:START -->` / `<!-- SPECTRUM:END -->` region
 

@@ -10,13 +10,15 @@ Spectrum is a Python CLI tool that manages stacked PRs on GitHub. It orchestrate
 spectrum/
 ├── pyproject.toml
 ├── src/spectrum/
-│   ├── cli.py          # Click command group (AliasGroup), all 20 commands
+│   ├── cli.py          # Click command group (AliasGroup), all 23 commands
 │   ├── git.py          # Git subprocess wrapper (branch, config, rebase, push)
 │   ├── github.py       # gh CLI wrapper (PR create/edit/view/merge)
 │   ├── opstate.py      # Operation state persistence for continue/abort
 │   ├── pr_metadata.py  # Sentinel-based PR body metadata management
-│   └── stack.py        # Stack state model, git config read/write, reconstruction
+│   ├── stack.py        # Stack state model, git config read/write, reconstruction
+│   └── undo.py         # Undo snapshot save/restore for destructive commands
 └── tests/
+    ├── test_absorb_command.py
     ├── test_cli.py
     ├── test_completion_command.py
     ├── test_continue_abort.py
@@ -27,15 +29,17 @@ spectrum/
     ├── test_pr_command.py
     ├── test_pr_metadata.py
     ├── test_rename_command.py
+    ├── test_split_command.py
     ├── test_squash_command.py
     ├── test_stack.py
     ├── test_title_command.py
+    ├── test_undo_command.py
     └── test_wip_command.py
 ```
 
 ## Key concepts
 
-**Stack state** is stored in git branch config keys (`spectrum-stack`, `spectrum-index`, `spectrum-pr`, `gh-merge-base`, `spectrum-wip`, `spectrum-title`). Operation state for `continue`/`abort` is saved to `.git/spectrum-state.json`.
+**Stack state** is stored in git branch config keys (`spectrum-stack`, `spectrum-index`, `spectrum-pr`, `gh-merge-base`, `spectrum-wip`, `spectrum-title`). Operation state for `continue`/`abort` is saved to `.git/spectrum-state.json`. Undo snapshots are saved to `.git/spectrum-undo.json`.
 
 **Branch naming**: Base branch names get `/a`, `/b`, `/c` appended. The ticket ID (e.g. `msg-3391`) is extracted from the branch name via regex and used as the stack identifier.
 
@@ -63,6 +67,8 @@ Tests mock `git` and `github` modules. CLI tests use Click's `CliRunner`. No rea
 
 - **Auto-recover when possible**: Handle recoverable subprocess errors automatically with user-visible feedback. For example, `push_force_with_lease` auto-retries on "stale info" / "rejected" errors by fetching and retrying, and accepts an `on_retry` callback for user feedback.
 - **Errors should be useful, following the spirit of Rust**: Error messages must tell the user *what* went wrong, *why*, and *what to do about it*. Include context (branch name, command that failed, relevant state). Prefer actionable messages like `"Rebase conflict on branch foo/a onto master. Resolve conflicts, then run: sp continue"` over generic ones like `"Rebase failed"`. When wrapping subprocess errors, preserve the underlying stderr but add Spectrum-level context.
+- **Confirm destructive operations**: Any command that rewrites history, deletes branches, or makes hard-to-reverse changes must prompt the user for confirmation before proceeding. Show what will happen (e.g., branches affected, commits being rewritten) so the user can make an informed decision. Use `click.confirm()` with `abort=True`.
+- **Help messages should be maximally helpful**: Command help strings (`@click.command(help=...)`) should explain what the command does, when to use it, and include usage examples. Use `click.echo()` for contextual guidance during execution (e.g., "Hint: run `sp restack` to propagate changes").
 
 ## Common tasks
 

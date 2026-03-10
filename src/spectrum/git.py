@@ -267,3 +267,56 @@ def rebase_continue() -> None:
 def rebase_abort() -> None:
     """Abort an in-progress rebase."""
     _run(["rebase", "--abort"])
+
+
+def diff_cached_files() -> list[str]:
+    """Return list of staged file paths."""
+    result = _run(["diff", "--cached", "--name-only"])
+    return [f for f in result.stdout.strip().splitlines() if f]
+
+
+def log_files(base: str, head: str, file: str) -> list[str]:
+    """Return commit SHAs that modified a file between base and head."""
+    result = _run(["log", "--format=%H", f"{base}..{head}", "--", file])
+    return [line for line in result.stdout.strip().splitlines() if line]
+
+
+def checkout_file(ref: str, file: str) -> None:
+    """Restore a file from a ref into the working tree and index."""
+    _run(["checkout", ref, "--", file])
+
+
+def add_files(files: list[str]) -> None:
+    """Stage files."""
+    _run(["add", "--"] + files)
+
+
+def reset_files(files: list[str]) -> None:
+    """Unstage files (reset HEAD)."""
+    _run(["reset", "HEAD", "--"] + files)
+
+
+def force_branch(name: str, sha: str) -> None:
+    """Move an existing branch to point at a different SHA."""
+    _run(["branch", "-f", name, sha])
+
+
+def create_branch_at(name: str, start_point: str) -> None:
+    """Create a branch at a specific point without checking it out."""
+    _run(["branch", name, start_point])
+
+
+def reset_hard(ref: str) -> None:
+    """Reset current branch to ref, discarding all changes."""
+    _run(["reset", "--hard", ref])
+
+
+def log_oneline(base: str, head: str) -> list[tuple[str, str]]:
+    """Return list of (sha, subject) between base and head, oldest first."""
+    result = _run(["log", "--oneline", "--reverse", f"{base}..{head}"])
+    commits = []
+    for line in result.stdout.strip().splitlines():
+        if line:
+            sha, _, subject = line.partition(" ")
+            commits.append((sha, subject))
+    return commits

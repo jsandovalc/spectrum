@@ -1,6 +1,6 @@
 [project]
 name = "spectrum"
-version = "0.3.0"
+version = "0.4.0"
 description = "Stacked PR tool for GitHub"
 requires-python = ">=3.11"
 dependencies = ["click>=8.0"]

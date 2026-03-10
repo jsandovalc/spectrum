@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-10
+
+### Added
+- `spectrum split [--at N]`: split the current branch into two at a commit boundary. First N commits stay on the current branch, remaining commits move to a new branch inserted after it in the stack. No rebasing needed — commit ancestry is preserved.
+- `spectrum absorb [--yes/-y]`: distribute staged changes to the correct branches in the stack. For each staged file, determines which branch last modified it via git history, then checks out each target branch and commits the staged version there.
+- `spectrum undo [--yes/-y]`: restore all branches in the stack to their state before the last destructive command. Snapshots are saved automatically before `fold`, `drop`, `squash`, `move`, `reorder`, `restack`, `sync`, `land`, `split`, and `absorb`.
+- Undo snapshot persistence (`undo.py`): captures branch SHAs and config before destructive operations, saved to `.git/spectrum-undo.json`.
+
 ## [0.3.0] - 2026-03-10
 
 ### Added

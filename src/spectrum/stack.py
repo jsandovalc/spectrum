@@ -197,6 +197,15 @@ def swap_entries(stack_id: str, index_i: int, index_j: int) -> list[StackEntry]:
     return entries
 
 
+def insert_entry(stack_id: str, after_index: int) -> None:
+    """Shift indices of entries after after_index up by 1 to make room for insertion."""
+    entries = get_stack(stack_id)
+    for entry in entries:
+        if entry.index > after_index:
+            entry.index += 1
+            git.set_branch_config(entry.branch, "spectrum-index", str(entry.index))
+
+
 def format_pr_title(stack_id: str, letter: str, message: str | None = None) -> str:
     """Format a PR title from the stack ID and letter.
 

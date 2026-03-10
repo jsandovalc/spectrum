@@ -7,6 +7,7 @@ from collections.abc import Callable
 import click
 
 from spectrum import git, github, pr_metadata, stack, ui
+from spectrum import undo as undo_mod
 from spectrum.git import GitError, RebaseConflictError
 from spectrum.github import GhError
 from spectrum.opstate import OperationState
@@ -26,9 +27,9 @@ class AliasGroup(click.Group):
         "Stack": ["create", "add", "drop", "adopt"],
         "Navigate": ["switch", "next", "prev", "top", "bottom"],
         "Publish": ["submit", "pr", "title", "land", "wip"],
-        "Edit": ["sync", "restack", "squash", "fold", "move", "rename", "reorder"],
+        "Edit": ["sync", "restack", "squash", "fold", "move", "rename", "reorder", "split", "absorb"],
         "Info": ["status", "log"],
-        "Recovery": ["continue", "abort"],
+        "Recovery": ["continue", "abort", "undo"],
     }
 
     @property
@@ -616,6 +617,8 @@ def land(method: str, yes: bool) -> None:
             abort=True,
         )
 
+    _save_undo("land", entries)
+
     click.echo(f"Merging {ui.pr_number(f'PR #{target.pr_number}')} {ui.bracket_letter(target.letter)} via {method}...")
     github.pr_merge(target.pr_number, method=method)
 
@@ -731,6 +734,17 @@ def _rebase_entries(
     return rebased
 
 
+def _save_undo(command: str, entries: list[stack.StackEntry] | None = None) -> None:
+    """Save undo snapshot for the current stack."""
+    try:
+        if entries is None:
+            entries = stack.current_stack()
+        if entries:
+            undo_mod.save_snapshot(command, entries)
+    except (GitError, OSError):
+        pass  # undo is best-effort; don't block the actual command
+
+
 def _retarget_to_master(entry: stack.StackEntry, reason: str | None = None) -> None:
     """Retarget an entry's merge base to master and update PR if it exists."""
     entry.merge_base = "master"
@@ -798,6 +812,8 @@ def sync(no_push: bool) -> None:
 
     entries = stack.get_stack(current.stack_id)
     original_branch = git.current_branch()
+
+    _save_undo("sync", entries)
 
     click.echo("Fetching origin/master...")
     git.fetch("origin", "master")
@@ -930,6 +946,8 @@ def drop(part: str | None, yes: bool) -> None:
     if not yes:
         click.confirm(f"Drop [{target.letter}] {target.branch}?", abort=True)
 
+    _save_undo("drop", entries)
+
     # Find the entry after the dropped one and retarget it
     successor = next((e for e in entries if e.merge_base == target.branch), None)
     if successor is not None:
@@ -1028,6 +1046,8 @@ def fold(yes: bool) -> None:
     if not yes:
         click.confirm(f"Fold [{current.letter}] into [{parent.letter}]?", abort=True)
 
+    _save_undo("fold", entries)
+
     # Checkout parent and merge
     git.checkout(parent.branch)
     git.merge_ff_only(current.branch)
@@ -1092,6 +1112,8 @@ def reorder(letter1: str, letter2: str, yes: bool) -> None:
         click.confirm(
             f"Swap [{letter1}] and [{letter2}] in stack?", abort=True
         )
+
+    _save_undo("reorder", entries)
 
     original_branch = git.current_branch()
 
@@ -1171,6 +1193,8 @@ def move(onto: str) -> None:
                 f"[{onto}] is a descendant of [{current.letter}]."
             )
         check = next((e for e in entries if e.branch == check.merge_base), None)
+
+    _save_undo("move", entries)
 
     # Detach current from its current position:
     # retarget current's successor to current's old merge_base
@@ -1390,6 +1414,7 @@ def restack() -> None:
         click.echo("Nothing to restack.")
         return
 
+    _save_undo("restack", entries)
     _rebase_entries(to_rebase, resume_command="spectrum restack", original_branch=original_branch)
 
     try:
@@ -1421,6 +1446,7 @@ def squash(message: str | None) -> None:
 
     commit_message = message or subjects[0]
 
+    _save_undo("squash")
     git.reset_soft(current.merge_base)
     git.commit(commit_message)
 
@@ -1431,6 +1457,191 @@ def squash(message: str | None) -> None:
     to_rebase = [e for e in entries if e.index > current.index]
     if to_rebase:
         _rebase_entries(to_rebase, resume_command="spectrum restack", original_branch=current.branch)
+
+
+# ---------------------------------------------------------------------------
+# split
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option("--at", "at_pos", type=int, default=None, help="Split after the Nth commit (1-indexed)")
+def split(at_pos: int | None) -> None:
+    """Split the current branch into two at a commit boundary.
+
+    Splits the current branch so that the first N commits stay on the
+    current branch and the remaining commits move to a new branch
+    inserted after it in the stack.
+
+    Example: sp split --at 2   (keep first 2 commits, move the rest)
+    """
+    current = stack.current_entry()
+    if current is None:
+        raise click.ClickException(
+            "Not on a spectrum branch. Use 'spectrum create' first."
+        )
+
+    full_stack = stack.get_stack(current.stack_id)
+    commits = git.log_oneline(current.merge_base, "HEAD")
+
+    if len(commits) <= 1:
+        raise click.ClickException("Nothing to split — branch has 1 or fewer commits.")
+
+    if at_pos is None:
+        click.echo("Commits on this branch:")
+        for i, (sha, subject) in enumerate(commits, 1):
+            click.echo(f"  {i}. {ui.dim(sha[:7])} {subject}")
+        click.echo()
+        at_pos = click.prompt(
+            f"Split after commit (1-{len(commits) - 1})",
+            type=int,
+        )
+
+    if at_pos < 1 or at_pos >= len(commits):
+        raise click.ClickException(
+            f"--at must be between 1 and {len(commits) - 1} (branch has {len(commits)} commits)."
+        )
+
+    _save_undo("split", full_stack)
+
+    # Find successor before modifying indices
+    successor = next((e for e in full_stack if e.merge_base == current.branch), None)
+
+    split_sha = git.rev_parse(commits[at_pos - 1][0])
+
+    base_branch = stack.extract_base_branch(current.branch)
+    if base_branch is None:
+        raise click.ClickException(f"Cannot determine base branch name from {current.branch}")
+
+    new_letter = stack.next_letter(full_stack)
+    new_branch = f"{base_branch}/{new_letter}"
+
+    # Create new branch at current HEAD, then reset current to split point
+    git.create_branch_at(new_branch, "HEAD")
+    git.reset_hard(split_sha)
+
+    # Shift indices to make room
+    stack.insert_entry(current.stack_id, current.index)
+
+    # Create and write new entry
+    new_entry = stack.StackEntry(
+        branch=new_branch,
+        index=current.index + 1,
+        stack_id=current.stack_id,
+        merge_base=current.branch,
+    )
+    stack.write_entry(new_entry)
+
+    # Update successor to point to new branch instead of current
+    if successor is not None:
+        git.set_branch_config(successor.branch, "gh-merge-base", new_branch)
+        if successor.pr_number:
+            try:
+                github.pr_edit_base(successor.pr_number, new_branch)
+            except GhError:
+                pass
+
+    kept = commits[:at_pos]
+    moved = commits[at_pos:]
+    click.echo(f"{ui.success('Split')} {ui.bracket_letter(current.letter)} into two branches:")
+    click.echo(f"  {ui.bracket_letter(current.letter)} {current.branch} ({len(kept)} commit{'s' if len(kept) != 1 else ''})")
+    click.echo(f"  {ui.bracket_letter(new_letter)} {new_branch} ({len(moved)} commit{'s' if len(moved) != 1 else ''})")
+
+
+# ---------------------------------------------------------------------------
+# absorb
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+def absorb(yes: bool) -> None:
+    """Distribute staged changes to the correct branches in the stack.
+
+    Looks at each staged file and determines which branch in the stack last
+    modified it. Then checks out each target branch, applies the staged version
+    of the file, and commits it there.
+
+    Example: sp absorb --yes
+    """
+    current = stack.current_entry()
+    if current is None:
+        raise click.ClickException(
+            "Not on a spectrum branch. Use 'spectrum create' first."
+        )
+
+    staged_files = git.diff_cached_files()
+    if not staged_files:
+        raise click.ClickException("No staged files. Stage changes with git add first.")
+
+    entries = stack.get_stack(current.stack_id)
+    original_branch = git.current_branch()
+
+    # For each staged file, determine which branch owns it
+    file_to_branch: dict[str, stack.StackEntry] = {}
+    skipped_current: list[str] = []
+    skipped_unowned: list[str] = []
+
+    for file in staged_files:
+        owner: stack.StackEntry | None = None
+        for entry in reversed(entries):  # top to bottom — first match is highest owner
+            shas = git.log_files(entry.merge_base, entry.branch, file)
+            if shas:
+                owner = entry
+                break
+        if owner is None:
+            skipped_unowned.append(file)
+        elif owner.branch == original_branch:
+            skipped_current.append(file)
+        else:
+            file_to_branch[file] = owner
+
+    # Group files by target branch
+    branch_files: dict[str, list[str]] = {}
+    for file, entry in file_to_branch.items():
+        branch_files.setdefault(entry.branch, []).append(file)
+
+    # Show the plan
+    if branch_files:
+        click.echo("Will distribute staged files:")
+        for entry in entries:
+            if entry.branch in branch_files:
+                files = branch_files[entry.branch]
+                click.echo(f"  {ui.bracket_letter(entry.letter)} <- {', '.join(files)}")
+    if skipped_current:
+        click.echo(f"Skipped (current branch): {', '.join(skipped_current)}")
+    if skipped_unowned:
+        click.echo(f"Skipped (no branch owns): {', '.join(skipped_unowned)}")
+
+    if not branch_files:
+        click.echo("No files to distribute.")
+        return
+
+    if not yes:
+        click.confirm("Proceed?", abort=True)
+
+    _save_undo("absorb", entries)
+
+    # Apply changes to each target branch
+    absorbed_files: list[str] = []
+    for entry in entries:
+        if entry.branch not in branch_files:
+            continue
+        files = branch_files[entry.branch]
+        git.checkout(entry.branch)
+        for file in files:
+            git.checkout_file(original_branch, file)
+        git.add_files(files)
+        git.commit(f"absorb: {', '.join(files)}")
+        absorbed_files.extend(files)
+
+    # Return to original branch
+    git.checkout(original_branch)
+
+    # Unstage absorbed files on the original branch
+    git.reset_files(absorbed_files)
+
+    click.echo(ui.success("Absorbed.") + f" Run {ui.dim('sp restack')} to propagate changes.")
 
 
 # ---------------------------------------------------------------------------
@@ -1558,3 +1769,30 @@ def abort() -> None:
         pass
 
     click.echo(ui.warning("Operation aborted."))
+
+
+@main.command()
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+def undo(yes: bool) -> None:
+    """Undo the last destructive spectrum command.
+
+    Restores all branches in the stack to their state before the last
+    destructive command (fold, drop, squash, move, reorder, restack,
+    sync, land, absorb). Only the most recent operation can be undone.
+
+    Example: sp undo --yes
+    """
+    snapshot = undo_mod.UndoSnapshot.load()
+    if snapshot is None:
+        raise click.ClickException("Nothing to undo.")
+
+    branches = ", ".join(snapshot.branches.keys())
+    click.echo(f"Undo {ui.header(snapshot.command)}? Affected branches: {branches}")
+
+    if not yes:
+        click.confirm("Proceed?", abort=True)
+
+    undo_mod.restore_snapshot(snapshot)
+    undo_mod.UndoSnapshot.clear()
+
+    click.echo(ui.success(f"Undone: {snapshot.command}"))
