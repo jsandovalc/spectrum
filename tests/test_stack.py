@@ -14,6 +14,7 @@ from spectrum.stack import (
     next_letter,
     read_entry,
     reindex_stack,
+    swap_entries,
     write_entry,
 )
 
@@ -203,3 +204,71 @@ class TestReindexStack:
         reindex_stack("msg-1")
 
         mock_git.set_branch_config.assert_not_called()
+
+
+class TestSwapEntries:
+    @patch("spectrum.stack.write_entry", autospec=True)
+    @patch("spectrum.stack.get_stack", autospec=True)
+    def test_adjacent_swap(self, mock_get_stack, mock_write_entry):
+        """Swap indices 0 and 1 in a 3-entry stack: updates indices and merge_bases."""
+        entry_a = StackEntry(branch="x/a", index=0, stack_id="msg-1", merge_base="master")
+        entry_b = StackEntry(branch="x/b", index=1, stack_id="msg-1", merge_base="x/a")
+        entry_c = StackEntry(branch="x/c", index=2, stack_id="msg-1", merge_base="x/b")
+        mock_get_stack.return_value = [entry_a, entry_b, entry_c]
+
+        # Act
+        result = swap_entries("msg-1", 0, 1)
+
+        # After swap: b(0) -> a(1) -> c(2)
+        assert result[0].branch == "x/b"
+        assert result[0].index == 0
+        assert result[0].merge_base == "master"
+        assert result[1].branch == "x/a"
+        assert result[1].index == 1
+        assert result[1].merge_base == "x/b"
+        assert result[2].branch == "x/c"
+        assert result[2].index == 2
+        assert result[2].merge_base == "x/a"
+
+    @patch("spectrum.stack.write_entry", autospec=True)
+    @patch("spectrum.stack.get_stack", autospec=True)
+    def test_non_adjacent_swap(self, mock_get_stack, mock_write_entry):
+        """Swap indices 0 and 2 in a 4-entry stack."""
+        entry_a = StackEntry(branch="x/a", index=0, stack_id="msg-1", merge_base="master")
+        entry_b = StackEntry(branch="x/b", index=1, stack_id="msg-1", merge_base="x/a")
+        entry_c = StackEntry(branch="x/c", index=2, stack_id="msg-1", merge_base="x/b")
+        entry_d = StackEntry(branch="x/d", index=3, stack_id="msg-1", merge_base="x/c")
+        mock_get_stack.return_value = [entry_a, entry_b, entry_c, entry_d]
+
+        # Act
+        result = swap_entries("msg-1", 0, 2)
+
+        # After swap: c(0) -> b(1) -> a(2) -> d(3)
+        assert result[0].branch == "x/c"
+        assert result[0].index == 0
+        assert result[0].merge_base == "master"
+        assert result[1].branch == "x/b"
+        assert result[1].index == 1
+        assert result[1].merge_base == "x/c"
+        assert result[2].branch == "x/a"
+        assert result[2].index == 2
+        assert result[2].merge_base == "x/b"
+        assert result[3].branch == "x/d"
+        assert result[3].index == 3
+        assert result[3].merge_base == "x/a"
+
+    def test_same_index_raises(self):
+        """Swapping an index with itself raises ValueError."""
+        with pytest.raises(ValueError, match="must be different"):
+            swap_entries("msg-1", 1, 1)
+
+    @patch("spectrum.stack.write_entry", autospec=True)
+    @patch("spectrum.stack.get_stack", autospec=True)
+    def test_index_not_found_raises(self, mock_get_stack, mock_write_entry):
+        """Swapping with an index not in the stack raises ValueError."""
+        entry_a = StackEntry(branch="x/a", index=0, stack_id="msg-1", merge_base="master")
+        entry_b = StackEntry(branch="x/b", index=1, stack_id="msg-1", merge_base="x/a")
+        mock_get_stack.return_value = [entry_a, entry_b]
+
+        with pytest.raises(ValueError, match="not found"):
+            swap_entries("msg-1", 0, 5)

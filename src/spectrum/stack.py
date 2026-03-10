@@ -157,6 +157,46 @@ def reindex_stack(stack_id: str) -> None:
             git.set_branch_config(entry.branch, "spectrum-index", str(new_index))
 
 
+def swap_entries(stack_id: str, index_i: int, index_j: int) -> list[StackEntry]:
+    """Swap two entries by index. Updates indices and merge_bases. Returns full stack."""
+    if index_i == index_j:
+        raise ValueError("Indices must be different")
+    entries = get_stack(stack_id)
+    # Normalize so i < j
+    if index_i > index_j:
+        index_i, index_j = index_j, index_i
+
+    entry_i = next((e for e in entries if e.index == index_i), None)
+    entry_j = next((e for e in entries if e.index == index_j), None)
+    if entry_i is None or entry_j is None:
+        raise ValueError("Index not found in stack")
+
+    # Capture root base before swapping
+    root_base = entries[0].merge_base
+
+    # Swap indices
+    entry_i.index, entry_j.index = entry_j.index, entry_i.index
+
+    # Re-sort by index
+    entries.sort(key=lambda e: e.index)
+
+    # Rebuild merge_bases for affected range
+    changed = {entry_i.branch, entry_j.branch}
+    for idx in range(index_i, min(index_j + 2, len(entries))):
+        if idx == 0:
+            entries[idx].merge_base = root_base
+        else:
+            entries[idx].merge_base = entries[idx - 1].branch
+        changed.add(entries[idx].branch)
+
+    # Persist only modified entries
+    for entry in entries:
+        if entry.branch in changed:
+            write_entry(entry)
+
+    return entries
+
+
 def format_pr_title(stack_id: str, letter: str, message: str | None = None) -> str:
     """Format a PR title from the stack ID and letter.
 

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-10
+
+### Added
+- `spectrum reorder <letter1> <letter2>`: swap two branches in the stack. Rebases affected branches to reflect the new order and updates PR base branches on GitHub. Use when a later part should land before an earlier one. Supports `--yes`/`-y` to skip confirmation, and integrates with `spectrum continue`/`abort` for rebase conflicts.
+
 ## [0.2.3] - 2026-03-10
 
 ### Fixed

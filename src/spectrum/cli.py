@@ -26,7 +26,7 @@ class AliasGroup(click.Group):
         "Stack": ["create", "add", "drop", "adopt"],
         "Navigate": ["switch", "next", "prev", "top", "bottom"],
         "Publish": ["submit", "pr", "title", "land", "wip"],
-        "Edit": ["sync", "restack", "squash", "fold", "move", "rename"],
+        "Edit": ["sync", "restack", "squash", "fold", "move", "rename", "reorder"],
         "Info": ["status", "log"],
         "Recovery": ["continue", "abort"],
     }
@@ -1047,6 +1047,92 @@ def fold(yes: bool) -> None:
         pass
 
     click.echo(f"{ui.success('Folded')} {ui.bracket_letter(current.letter)} into {ui.bracket_letter(parent.letter)}")
+
+
+# ---------------------------------------------------------------------------
+# reorder
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.argument("letter1")
+@click.argument("letter2")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+def reorder(letter1: str, letter2: str, yes: bool) -> None:
+    """Swap two branches in the stack.
+
+    Reorders branches by swapping their positions and rebasing affected
+    branches to reflect the new order. Use when a later part should land
+    before an earlier one (e.g., a refactor that the earlier part depends on).
+
+    Example: sp reorder b c   (swaps parts [b] and [c])
+    """
+    current = stack.current_entry()
+    if current is None:
+        raise click.ClickException(
+            "Not on a spectrum branch. Use 'spectrum create' first."
+        )
+
+    if letter1 == letter2:
+        raise click.ClickException("Letters must be different.")
+
+    entries = stack.get_stack(current.stack_id)
+    index1 = stack.letter_to_index(letter1)
+    index2 = stack.letter_to_index(letter2)
+    entry1 = next((e for e in entries if e.index == index1), None)
+    entry2 = next((e for e in entries if e.index == index2), None)
+    if entry1 is None or entry2 is None:
+        available = ", ".join(e.letter for e in entries)
+        missing = letter1 if entry1 is None else letter2
+        raise click.ClickException(
+            f"Part [{missing}] not found in stack. Available: {available}"
+        )
+
+    if not yes:
+        click.confirm(
+            f"Swap [{letter1}] and [{letter2}] in stack?", abort=True
+        )
+
+    original_branch = git.current_branch()
+
+    # Capture old bases for rebase fork-point computation
+    low, high = sorted([index1, index2])
+    affected_range = [e for e in entries if low <= e.index <= high]
+    # Also include entry after high if it exists (its merge_base changes)
+    after_high = next((e for e in entries if e.index == high + 1), None)
+    if after_high:
+        affected_range.append(after_high)
+    old_base_overrides = {e.branch: git.rev_parse(e.merge_base) for e in affected_range}
+
+    # Swap entries in git config
+    swapped = stack.swap_entries(current.stack_id, index1, index2)
+
+    # Update PR base branches for affected entries only
+    for entry in swapped:
+        if entry.pr_number and entry.branch in old_base_overrides:
+            try:
+                github.pr_edit_base(entry.pr_number, entry.merge_base)
+            except GhError:
+                pass
+
+    # Rebase affected range
+    to_rebase = [e for e in swapped if e.branch in old_base_overrides]
+    rebased = _rebase_entries(
+        to_rebase,
+        resume_command="spectrum reorder",
+        original_branch=original_branch,
+        old_base_overrides=old_base_overrides,
+    )
+
+    if len(rebased) == len(to_rebase):
+        try:
+            git.checkout(original_branch)
+        except GitError:
+            pass
+        click.echo(
+            f"{ui.success('Reordered')} stack: swapped [{letter1}] and [{letter2}]. "
+            f"Run {ui.dim('sp submit')} to push."
+        )
 
 
 # ---------------------------------------------------------------------------
