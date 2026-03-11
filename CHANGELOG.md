@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-11
+
+### Added
+- Auto-skip duplicate commits during rebase: when `sync` or `restack` encounters a conflict caused by a stale copy of a parent's commit (from a prior incomplete rebase), Spectrum now detects the duplicate by matching commit subjects and automatically runs `git rebase --skip`. Logs each skipped commit and continues the rebase without user intervention.
+
 ## [0.4.2] - 2026-03-11
 
 ### Fixed

@@ -275,6 +275,39 @@ def rebase_continue() -> None:
         raise RebaseConflictError("unknown", "unknown", conflict_files())
 
 
+def rebase_skip() -> None:
+    """Skip the current commit during an in-progress rebase.
+
+    Raises RebaseConflictError if the next commit also conflicts.
+    """
+    result = _run(
+        ["rebase", "--skip"],
+        check=False,
+        env={"GIT_EDITOR": "true"},
+    )
+    if result.returncode != 0:
+        files = conflict_files()
+        if files:
+            raise RebaseConflictError("unknown", "unknown", files)
+        raise GitError(f"Rebase skip failed: {result.stderr.strip()}")
+
+
+def rebase_head_subject() -> str | None:
+    """Return the commit subject of REBASE_HEAD, or None if no rebase in progress."""
+    result = _run(["log", "-1", "--format=%s", "REBASE_HEAD"], check=False)
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def log_subjects_from_range(base: str, head: str) -> set[str]:
+    """Return a set of commit subjects between base and head."""
+    result = _run(["log", "--format=%s", f"{base}..{head}"], check=False)
+    if result.returncode != 0:
+        return set()
+    return {line for line in result.stdout.strip().splitlines() if line}
+
+
 def rebase_abort() -> None:
     """Abort an in-progress rebase."""
     _run(["rebase", "--abort"])

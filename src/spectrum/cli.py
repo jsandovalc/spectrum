@@ -672,6 +672,47 @@ def _format_conflict_files(files: list[str]) -> str:
     return f"  Conflicting files:\n{lines}\n\n  git add <files>\n"
 
 
+def _auto_skip_duplicate_commits(onto: str, old_base: str) -> list[str]:
+    """Auto-skip stale duplicate commits that conflict during rebase.
+
+    When a child branch has stale copies of its parent's commits (e.g. from a
+    prior incomplete sync/restack), rebasing produces false conflicts because
+    git's 3-way merge sees shifted context lines. This function detects these
+    by comparing the conflicting commit's subject (REBASE_HEAD) against commits
+    already in the target branch. Matching subjects indicate a stale duplicate
+    that can be safely skipped.
+
+    Uses commit subject matching rather than git patch-id because patch-id fails
+    precisely in this scenario — the patches differ due to context line shifts
+    from cascading rebases.
+
+    Returns the list of skipped commit subjects, or an empty list if the
+    conflict is not a duplicate (i.e. a real conflict).
+    """
+    # Collect subjects from the exact range between the old base and the
+    # target (onto). These are the parent's commits that the child may have
+    # stale copies of.
+    target_subjects = git.log_subjects_from_range(old_base, onto)
+    if not target_subjects:
+        return []
+
+    skipped: list[str] = []
+    while True:
+        subject = git.rebase_head_subject()
+        if not subject or subject not in target_subjects:
+            return skipped
+        skipped.append(subject)
+        click.echo(f"\n  Skipped duplicate: {subject}")
+        try:
+            git.rebase_skip()
+            # Rebase completed successfully after this skip
+            return skipped
+        except RebaseConflictError:
+            # Next commit also conflicts — loop back to check if it's
+            # also a duplicate
+            continue
+
+
 def _rebase_entries(
     entries: list[stack.StackEntry],
     *,
@@ -705,6 +746,24 @@ def _rebase_entries(
             click.echo(ui.success("done"))
             rebased.append(entry.branch)
         except RebaseConflictError as exc:
+            # Auto-skip duplicate commits: when a child branch has stale
+            # copies of parent commits (from a prior incomplete rebase),
+            # the cascading rebase produces false conflicts. Detect these
+            # by matching the conflicting commit's subject against subjects
+            # already in the target branch, and skip them automatically.
+            #
+            # Future enhancement: proactively detect duplicates BEFORE
+            # starting the rebase by comparing commit subjects between
+            # old_base..branch and the target. Adjust old_base to skip
+            # known duplicates, avoiding conflicts entirely. This reactive
+            # approach is simpler but only handles the conflict after it
+            # occurs.
+            skipped = _auto_skip_duplicate_commits(onto, old_base)
+            if skipped:
+                click.echo(ui.success("done") + f" (skipped {len(skipped)} duplicate commit{'s' if len(skipped) != 1 else ''})")
+                rebased.append(entry.branch)
+                continue
+
             click.echo(ui.error("CONFLICT"))
             # Save state for continue/abort
             remaining = entries[i:]
