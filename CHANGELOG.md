@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-11
+
+### Fixed
+- `spectrum continue` no longer hangs when git opens an editor to confirm the commit message after conflict resolution. Fixed by setting `GIT_EDITOR=true` so the message is accepted as-is.
+
 ## [0.4.0] - 2026-03-10
 
 ### Added

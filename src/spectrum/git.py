@@ -25,13 +25,18 @@ def _run(
     *,
     check: bool = True,
     capture: bool = True,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    run_env = None
+    if env:
+        run_env = {**os.environ, **env}
     try:
         return subprocess.run(
             ["git", *args],
             check=check,
             capture_output=capture,
             text=True,
+            env=run_env,
         )
     except subprocess.CalledProcessError as e:
         raise GitError(f"git {' '.join(args)} failed: {e.stderr.strip()}") from e
@@ -259,7 +264,11 @@ def git_dir() -> str:
 
 def rebase_continue() -> None:
     """Continue an in-progress rebase."""
-    result = _run(["rebase", "--continue"], check=False)
+    result = _run(
+        ["rebase", "--continue"],
+        check=False,
+        env={"GIT_EDITOR": "true"},
+    )
     if result.returncode != 0:
         raise RebaseConflictError("unknown", "unknown", conflict_files())
 
