@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-11
+
+### Fixed
+- `spectrum continue` no longer fails with "Rebase still has conflicts" when no rebase is actually in progress. This happened when operation state was saved but the rebase had already completed. Now checks for rebase state directories before attempting to continue.
+
 ## [0.4.1] - 2026-03-11
 
 ### Fixed

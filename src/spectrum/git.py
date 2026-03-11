@@ -263,7 +263,9 @@ def git_dir() -> str:
 
 
 def rebase_continue() -> None:
-    """Continue an in-progress rebase."""
+    """Continue an in-progress rebase. No-op if no rebase is in progress."""
+    if not _rebase_in_progress():
+        return
     result = _run(
         ["rebase", "--continue"],
         check=False,
