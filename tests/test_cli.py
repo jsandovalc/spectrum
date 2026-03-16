@@ -798,13 +798,15 @@ class TestGetTitle:
             branch="user/msg-1-foo/a", index=0, stack_id="msg-1", merge_base="master"
         )
         mock_git.get_branch_config.return_value = None
+        mock_git.merge_base.return_value = "abc123"
         mock_git.log_subjects.return_value = ["Set response kind to handoff", "Fix typo"]
         mock_stack.format_pr_title.return_value = "MSG-1 [a]: Set response kind to handoff"
 
         result = _get_title(entry)
 
         assert result == "MSG-1 [a]: Set response kind to handoff"
-        mock_git.log_subjects.assert_called_once_with("master", "user/msg-1-foo/a")
+        mock_git.merge_base.assert_called_once_with("master", "user/msg-1-foo/a")
+        mock_git.log_subjects.assert_called_once_with("abc123", "user/msg-1-foo/a")
         mock_stack.format_pr_title.assert_called_once_with(
             "msg-1", "a", "Set response kind to handoff"
         )
@@ -814,6 +816,7 @@ class TestGetTitle:
             branch="user/msg-1-foo/a", index=0, stack_id="msg-1", merge_base="master"
         )
         mock_git.get_branch_config.return_value = None
+        mock_git.merge_base.return_value = "abc123"
         mock_git.log_subjects.return_value = []
         mock_stack.format_pr_title.return_value = "MSG-1 [a]"
 
@@ -821,6 +824,23 @@ class TestGetTitle:
 
         assert result == "MSG-1 [a]"
         mock_stack.format_pr_title.assert_called_once_with("msg-1", "a", None)
+
+    def test_uses_fork_point_for_stacked_branch(self, mock_stack, mock_git):
+        """Stacked branches should also resolve via merge_base."""
+        entry = StackEntry(
+            branch="user/msg-1-foo/b", index=1, stack_id="msg-1",
+            merge_base="user/msg-1-foo/a"
+        )
+        mock_git.get_branch_config.return_value = None
+        mock_git.merge_base.return_value = "branch_a_tip"
+        mock_git.log_subjects.return_value = ["Second PR work"]
+        mock_stack.format_pr_title.return_value = "MSG-1 [b]: Second PR work"
+
+        result = _get_title(entry)
+
+        assert result == "MSG-1 [b]: Second PR work"
+        mock_git.merge_base.assert_called_once_with("user/msg-1-foo/a", "user/msg-1-foo/b")
+        mock_git.log_subjects.assert_called_once_with("branch_a_tip", "user/msg-1-foo/b")
 
 
 @patch("spectrum.cli.git", autospec=True)
@@ -838,6 +858,7 @@ class TestSubmitAssignee:
         mock_stack.format_pr_title.return_value = "MSG-1 [a]"
         mock_stack.extract_letter.return_value = None
         mock_git.get_branch_config.return_value = None
+        mock_git.merge_base.return_value = "fork_sha"
         mock_git.log_subjects.return_value = ["Initial commit"]
         mock_github.read_pr_template.return_value = None
         mock_github.get_repo_url.return_value = "https://github.com/user/repo"

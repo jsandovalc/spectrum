@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-16
+
+### Fixed
+- `submit` no longer picks the wrong PR title when local `master` is behind `origin/master`. The auto-title logic now uses `git merge-base` to find the actual fork point, so only commits on the branch are considered — not stale commits from an out-of-date local master.
+
 ## [0.5.0] - 2026-03-11
 
 ### Added

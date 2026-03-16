@@ -383,7 +383,8 @@ def _get_title(entry: stack.StackEntry) -> str:
     title_from_config = git.get_branch_config(entry.branch, "spectrum-title")
     message = title_from_config
     if not message:
-        subjects = git.log_subjects(entry.merge_base, entry.branch)
+        fork_point = git.merge_base(entry.merge_base, entry.branch)
+        subjects = git.log_subjects(fork_point, entry.branch)
         if subjects:
             message = subjects[0]
     return stack.format_pr_title(entry.stack_id, entry.letter, message)
