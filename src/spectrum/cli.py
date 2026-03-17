@@ -107,6 +107,15 @@ def create(branch_name: str, on_branch: str | None) -> None:
         )
 
     first_branch = f"{branch_name}/a"
+    if git.branch_exists(branch_name):
+        raise click.ClickException(
+            f"Branch '{branch_name}' already exists and conflicts with "
+            f"stack branch '{first_branch}'.\n"
+            "Git does not allow a branch to be both a name and a prefix.\n"
+            f"Delete it first, then retry:\n"
+            f"  git branch -d {branch_name}\n"
+            f"  sp create {branch_name}"
+        )
     if git.branch_exists(first_branch):
         raise click.ClickException(f"Branch {first_branch} already exists")
 

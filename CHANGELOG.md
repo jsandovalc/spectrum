@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- `create` now gives a clear error when the base branch name already exists as a git ref (e.g. `user/ticket-123-desc` exists and conflicts with `user/ticket-123-desc/a`). Previously this surfaced a raw `fatal: cannot lock ref` error from git.
+
 ## [0.5.1] - 2026-03-16
 
 ### Fixed

@@ -93,9 +93,20 @@ class TestCreateCommand:
         assert result.exit_code != 0
         assert "Could not extract ticket ID" in result.output
 
+    def test_rejects_conflicting_base_branch(self, mock_stack, mock_git):
+        mock_stack.extract_stack_id.return_value = "msg-1"
+        mock_git.branch_exists.side_effect = lambda b: b == "user/msg-1-foo"
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["create", "user/msg-1-foo"])
+
+        assert result.exit_code != 0
+        assert "conflicts with" in result.output
+        assert "git branch -d" in result.output
+
     def test_rejects_existing_branch(self, mock_stack, mock_git):
         mock_stack.extract_stack_id.return_value = "msg-1"
-        mock_git.branch_exists.return_value = True
+        mock_git.branch_exists.side_effect = lambda b: b == "user/msg-1-foo/a"
 
         runner = CliRunner()
         result = runner.invoke(main, ["create", "user/msg-1-foo"])
