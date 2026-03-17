@@ -5,6 +5,11 @@
 ### Fixed
 - `create` now gives a clear error when the base branch name already exists as a git ref (e.g. `user/ticket-123-desc` exists and conflicts with `user/ticket-123-desc/a`). Previously this surfaced a raw `fatal: cannot lock ref` error from git.
 
+## [0.6.0] - 2026-03-17
+
+### Added
+- Auto-continue rebase when `git rerere` resolves conflicts: during `sync` or `restack`, if rerere has already resolved all conflicts in a branch, Spectrum now automatically stages the resolved files and continues the rebase without stopping. This eliminates the need to manually run `sp continue` for each branch in a cascade when rerere has recorded resolutions from a prior conflict. Shows "done (rerere)" in output when auto-continuing.
+
 ## [0.5.1] - 2026-03-16
 
 ### Fixed

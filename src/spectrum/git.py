@@ -120,6 +120,12 @@ def conflict_files() -> list[str]:
     return files
 
 
+def unmerged_files() -> list[str]:
+    """Return files with unresolved merge conflicts from the index."""
+    result = _run(["diff", "--name-only", "--diff-filter=U"], check=False)
+    return [f for f in (result.stdout or "").strip().splitlines() if f]
+
+
 def rebase_onto(branch: str, onto: str, old_base: str) -> None:
     """Rebase branch onto a new base, transplanting commits from old_base.
 
@@ -134,6 +140,9 @@ def rebase_onto(branch: str, onto: str, old_base: str) -> None:
         files = conflict_files()
         if files:
             raise RebaseConflictError(branch, onto, files)
+        # Rebase paused but no unmerged files (e.g. rerere.autoupdate resolved them)
+        if _rebase_in_progress():
+            raise RebaseConflictError(branch, onto, [])
         raise GitError(f"Rebase failed: {result.stderr.strip()}")
 
 

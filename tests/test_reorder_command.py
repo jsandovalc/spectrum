@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 from click.testing import CliRunner
 
@@ -228,9 +228,13 @@ class TestReorderCommand:
         mock_git.rebase_onto.side_effect = RebaseConflictError(
             "user/msg-3391-foo/b", "master"
         )
+        mock_git.unmerged_files.return_value = ["file.py"]
+        mock_git.repo_root.return_value = "/repo"
 
-        runner = CliRunner()
-        result = runner.invoke(main, ["reorder", "a", "b", "-y"])
+        content = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>>\n"
+        with patch("builtins.open", mock_open(read_data=content)):
+            runner = CliRunner()
+            result = runner.invoke(main, ["reorder", "a", "b", "-y"])
 
         assert result.exit_code == 0
         assert "conflict" in result.output.lower()

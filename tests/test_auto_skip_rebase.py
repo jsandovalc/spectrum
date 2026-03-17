@@ -6,7 +6,7 @@ by matching the conflicting commit's subject against the target branch and
 auto-skips duplicates.
 """
 
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 from click.testing import CliRunner
 
@@ -168,9 +168,14 @@ class TestRebaseEntriesAutoSkip:
         # Not a duplicate — subject doesn't match target
         mock_git.log_subjects_from_range.return_value = {"unrelated commit"}
         mock_git.rebase_head_subject.return_value = "Add new feature"
+        # Conflict is genuinely unresolved (has conflict markers)
+        mock_git.unmerged_files.return_value = ["nodes.py"]
+        mock_git.repo_root.return_value = "/repo"
 
-        runner = CliRunner()
-        result = runner.invoke(main, ["restack"])
+        content = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>>\n"
+        with patch("builtins.open", mock_open(read_data=content)):
+            runner = CliRunner()
+            result = runner.invoke(main, ["restack"])
 
         assert "CONFLICT" in result.output
         assert "spectrum continue" in result.output

@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 from click.testing import CliRunner
 
@@ -199,9 +199,13 @@ class TestRebaseEntriesSavesState:
             "user/msg-3391-foo/b", "user/msg-3391-foo/a"
         )
         mock_git.current_branch.return_value = "user/msg-3391-foo/a"
+        mock_git.unmerged_files.return_value = ["file.py"]
+        mock_git.repo_root.return_value = "/repo"
 
-        runner = CliRunner()
-        result = runner.invoke(main, ["restack"])
+        content = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>>\n"
+        with patch("builtins.open", mock_open(read_data=content)):
+            runner = CliRunner()
+            result = runner.invoke(main, ["restack"])
 
         assert "CONFLICT" in result.output
         assert "spectrum continue" in result.output

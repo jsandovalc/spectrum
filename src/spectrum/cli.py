@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 
 import click
@@ -682,6 +683,45 @@ def _format_conflict_files(files: list[str]) -> str:
     return f"  Conflicting files:\n{lines}\n\n  git add <files>\n"
 
 
+def _auto_continue_rerere_resolved() -> bool:
+    """Auto-continue rebase if rerere (or another mechanism) resolved all conflicts.
+
+    Checks for unmerged files in the index. If none remain, all conflicts were
+    resolved automatically. If unmerged files exist but have no conflict markers
+    in the working tree, rerere resolved them without staging (rerere.autoupdate
+    off) — stage them and continue.
+
+    Loops to handle multiple commits in the same branch that rerere can resolve.
+
+    Returns True if the rebase was fully continued, False if genuine conflicts remain.
+    """
+    root = git.repo_root()
+    # Bound the loop: one iteration per commit being rebased. 200 is generous.
+    for _ in range(200):
+        unmerged = git.unmerged_files()
+        if unmerged:
+            # Check if rerere resolved the working tree (no conflict markers)
+            for f in unmerged:
+                path = os.path.join(root, f)
+                try:
+                    with open(path, errors="replace") as fh:
+                        for line in fh:
+                            if "<<<<<<<" in line:
+                                return False
+                except OSError:
+                    return False
+            # Rerere resolved but didn't auto-stage — stage them
+            git.add_files(unmerged)
+
+        try:
+            git.rebase_continue()
+            return True
+        except RebaseConflictError:
+            # Next commit also conflicted — loop to check if rerere handles it
+            continue
+    return False
+
+
 def _auto_skip_duplicate_commits(onto: str, old_base: str) -> list[str]:
     """Auto-skip stale duplicate commits that conflict during rebase.
 
@@ -771,6 +811,11 @@ def _rebase_entries(
             skipped = _auto_skip_duplicate_commits(onto, old_base)
             if skipped:
                 click.echo(ui.success("done") + f" (skipped {len(skipped)} duplicate commit{'s' if len(skipped) != 1 else ''})")
+                rebased.append(entry.branch)
+                continue
+
+            if _auto_continue_rerere_resolved():
+                click.echo(ui.success("done") + " (rerere)")
                 rebased.append(entry.branch)
                 continue
 

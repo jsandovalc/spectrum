@@ -1,5 +1,5 @@
 import subprocess
-from unittest.mock import patch, call
+from unittest.mock import mock_open, patch, call
 
 import pytest
 from click.testing import CliRunner
@@ -562,9 +562,13 @@ class TestSyncCommand:
         mock_git.current_branch.return_value = "user/msg-1/a"
         mock_git.merge_base.return_value = "abc123"
         mock_git.rebase_onto.side_effect = RebaseConflictError("user/msg-1/a", "origin/master")
+        mock_git.unmerged_files.return_value = ["file.py"]
+        mock_git.repo_root.return_value = "/repo"
 
-        runner = CliRunner()
-        result = runner.invoke(main, ["sync"])
+        content = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>>\n"
+        with patch("builtins.open", mock_open(read_data=content)):
+            runner = CliRunner()
+            result = runner.invoke(main, ["sync"])
 
         assert "spectrum continue" in result.output
         assert "spectrum abort" in result.output
