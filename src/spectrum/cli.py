@@ -589,6 +589,14 @@ def title(title: str) -> None:
     if current.pr_number is not None:
         github.pr_edit_title(current.pr_number, formatted)
         click.echo(f"{ui.success('Updated')} {ui.pr_number(f'PR #{current.pr_number}')} title: {formatted}")
+
+        # Refresh stack tables in all sibling PR bodies
+        try:
+            entries = stack.get_stack(current.stack_id)
+            repo_url = github.get_repo_url()
+            _update_all_pr_bodies(entries, repo_url)
+        except GhError:
+            pass
     else:
         click.echo(f"{ui.success('Title saved.')} Will be used on next submit.")
 

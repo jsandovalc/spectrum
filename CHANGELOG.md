@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
+- `title` now refreshes the stack navigation tables in all sibling PR bodies after changing a title. Previously, sibling PRs would show the old title until the next `submit` or `restack`.
 - `create` now gives a clear error when the base branch name already exists as a git ref (e.g. `user/ticket-123-desc` exists and conflicts with `user/ticket-123-desc/a`). Previously this surfaced a raw `fatal: cannot lock ref` error from git.
 
 ## [0.6.0] - 2026-03-17
