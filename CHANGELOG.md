@@ -6,6 +6,11 @@
 - `title` now refreshes the stack navigation tables in all sibling PR bodies after changing a title. Previously, sibling PRs would show the old title until the next `submit` or `restack`.
 - `create` now gives a clear error when the base branch name already exists as a git ref (e.g. `user/ticket-123-desc` exists and conflicts with `user/ticket-123-desc/a`). Previously this surfaced a raw `fatal: cannot lock ref` error from git.
 
+## [0.7.0] - 2026-03-20
+
+### Added
+- Auto-squash branches before rebase: during `sync`, `restack`, and `land`, branches with multiple commits are automatically squashed to a single commit before rebasing. This dramatically reduces false conflicts caused by squash-merge policies — when GitHub squash-merges a PR, the single squash commit no longer conflicts with multiple original commits in child branches. Uses `spectrum-title` config for the squash message if set, otherwise the first commit subject. Shows "(squashed to 1 commit)" in output. Single-commit branches are unaffected.
+
 ## [0.6.0] - 2026-03-17
 
 ### Added

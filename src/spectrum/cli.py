@@ -771,6 +771,22 @@ def _auto_skip_duplicate_commits(onto: str, old_base: str) -> list[str]:
             continue
 
 
+def _squash_branch(entry: stack.StackEntry) -> bool:
+    """Squash all commits in a branch into one. No-op if ≤1 commit.
+
+    Returns True if squash was performed, False otherwise.
+    """
+    subjects = git.log_subjects(entry.merge_base, entry.branch)
+    if len(subjects) <= 1:
+        return False
+    title = git.get_branch_config(entry.branch, "spectrum-title")
+    message = title or subjects[0]
+    git.checkout(entry.branch)
+    git.reset_soft(entry.merge_base)
+    git.commit(message)
+    return True
+
+
 def _rebase_entries(
     entries: list[stack.StackEntry],
     *,
@@ -800,6 +816,14 @@ def _rebase_entries(
                     or git.merge_base(entry.branch, onto)
                 )
             pre_rebase_tip[entry.branch] = git.rev_parse(entry.branch)
+            squashed = _squash_branch(entry)
+            if squashed:
+                click.echo(f"  (squashed to 1 commit) ", nl=False)
+                # After squash the branch is 1 commit on top of merge_base,
+                # so use merge_base as old_base — unless the parent was already
+                # rebased in this loop (pre_rebase_tip has the correct old tip).
+                if entry.merge_base not in pre_rebase_tip:
+                    old_base = entry.merge_base
             git.rebase_onto(entry.branch, onto, old_base)
             click.echo(ui.success("done"))
             rebased.append(entry.branch)

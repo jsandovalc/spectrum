@@ -45,6 +45,10 @@ spectrum/
 
 **PR metadata** is injected into PR bodies between `<!-- SPECTRUM:START -->` and `<!-- SPECTRUM:END -->` HTML comment sentinels. Everything outside the sentinels is user content and never modified.
 
+## Design goals
+
+- **Minimize rebase conflicts**: Spectrum should avoid creating unnecessary rebase conflicts wherever possible. When conflicts do occur, it should auto-recover when it can (e.g. via rerere, duplicate commit detection) and provide clear guidance when it can't.
+
 ## Architecture decisions
 
 - **All external operations go through subprocess** — `git.py` wraps git, `github.py` wraps gh. No Python git libraries.
