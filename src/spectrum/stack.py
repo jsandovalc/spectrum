@@ -7,6 +7,18 @@ from dataclasses import dataclass
 
 from spectrum import git
 
+# Canonical list of all git branch config keys managed by Spectrum.
+# Every key that read_entry/write_entry touches must appear here.
+# remove_entry() and undo.py both rely on this list to clean up fully.
+CONFIG_KEYS = [
+    "spectrum-stack",
+    "spectrum-index",
+    "gh-merge-base",
+    "spectrum-pr",
+    "spectrum-wip",
+    "spectrum-title",
+]
+
 
 @dataclass
 class StackEntry:
@@ -108,11 +120,12 @@ def write_entry(entry: StackEntry) -> None:
 
 
 def remove_entry(branch: str) -> None:
-    """Remove all spectrum config for a branch."""
-    git.unset_branch_config(branch, "spectrum-stack")
-    git.unset_branch_config(branch, "spectrum-index")
-    git.unset_branch_config(branch, "spectrum-pr")
-    git.unset_branch_config(branch, "spectrum-wip")
+    """Remove all spectrum config for a branch.
+
+    Uses CONFIG_KEYS to ensure every key is cleaned up.
+    """
+    for key in CONFIG_KEYS:
+        git.unset_branch_config(branch, key)
 
 
 def get_stack(stack_id: str) -> list[StackEntry]:

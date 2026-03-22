@@ -3,6 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from spectrum.stack import (
+    CONFIG_KEYS,
     StackEntry,
     extract_base_branch,
     extract_letter,
@@ -14,6 +15,7 @@ from spectrum.stack import (
     next_letter,
     read_entry,
     reindex_stack,
+    remove_entry,
     swap_entries,
     write_entry,
 )
@@ -153,6 +155,15 @@ class TestWriteEntry:
         mock_git.set_branch_config.assert_any_call("x/a", "spectrum-index", "0")
         mock_git.set_branch_config.assert_any_call("x/a", "gh-merge-base", "master")
         mock_git.set_branch_config.assert_any_call("x/a", "spectrum-pr", "42")
+
+
+class TestRemoveEntry:
+    @patch("spectrum.stack.git", autospec=True)
+    def test_unsets_all_config_keys(self, mock_git):
+        remove_entry("x/a")
+
+        unset_keys = [call.args[1] for call in mock_git.unset_branch_config.call_args_list]
+        assert sorted(unset_keys) == sorted(CONFIG_KEYS)
 
 
 class TestGetStack:

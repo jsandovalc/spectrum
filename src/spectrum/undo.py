@@ -7,9 +7,7 @@ import os
 from dataclasses import asdict, dataclass
 
 from spectrum import git
-
-
-CONFIG_KEYS = ["spectrum-stack", "spectrum-index", "gh-merge-base", "spectrum-pr", "spectrum-wip", "spectrum-title"]
+from spectrum.stack import CONFIG_KEYS
 
 
 @dataclass
