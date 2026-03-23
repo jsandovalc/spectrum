@@ -36,6 +36,7 @@ class TestSquashCommand:
             merge_base="master",
         )
         mock_stack.current_entry.return_value = entry
+        mock_git.merge_base_fork_point.return_value = "fork-sha"
         mock_git.log_subjects.return_value = ["first commit", "second", "third"]
         mock_stack.get_stack.return_value = [entry]
 
@@ -44,7 +45,7 @@ class TestSquashCommand:
 
         assert result.exit_code == 0
         assert "Squashed 3 commits into: first commit" in result.output
-        mock_git.reset_soft.assert_called_once_with("master")
+        mock_git.reset_soft.assert_called_once_with("fork-sha")
         mock_git.commit.assert_called_once_with("first commit")
 
     @patch("spectrum.cli.git", autospec=True)

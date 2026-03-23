@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-03-23
+
 ### Fixed
+- Auto-squash no longer resets branches to `master` when rebasing after a parent PR was merged. `_squash_branch` was using the symbolic `entry.merge_base` (e.g. `"master"`) as the reset target instead of the concrete fork-point SHA. For retargeted branches, this collapsed all commits — including the merged parent's — producing 0 unique commits, which caused GitHub to auto-close the PR and show 1000+ changed files in child PRs. Now uses the same computed `old_base` SHA that the rebase uses.
+- `squash` command now uses the fork-point SHA instead of the symbolic `merge_base` ref, fixing the same class of bug for the explicit squash path.
 - `title` now refreshes the stack navigation tables in all sibling PR bodies after changing a title. Previously, sibling PRs would show the old title until the next `submit` or `restack`.
 - `create` now gives a clear error when the base branch name already exists as a git ref (e.g. `user/ticket-123-desc` exists and conflicts with `user/ticket-123-desc/a`). Previously this surfaced a raw `fatal: cannot lock ref` error from git.
 - `remove_entry` now unsets all config keys (`gh-merge-base` and `spectrum-title` were previously missed). This prevents stale config from affecting branches reused after `drop` or `land`. Config keys are now defined once in `stack.CONFIG_KEYS` and shared by both `remove_entry` and `undo`.
